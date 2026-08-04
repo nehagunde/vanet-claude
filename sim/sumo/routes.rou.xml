@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+
+    <!--
+        OBU Vehicle Type — Phase 2
+        All 10 vehicles are identical "passenger" cars equipped
+        with 802.11p OBU hardware (modelled in NS-3, Phase 3).
+        Color starts green (moving); TraCI changes it to red/yellow
+        in Phase 4 when jam is detected.
+    -->
+    <vType id="obu"
+           accel="2.6"
+           decel="4.5"
+           sigma="0.5"
+           length="4.5"
+           minGap="2.5"
+           maxSpeed="13.89"
+           color="0,200,0"
+           guiShape="passenger"/>
+
+    <!-- seg_00_01 | FREE | ratio=1.050 | speed=47.6 km/h | 1 vehicle(s) -->
+    <trip id="veh_00" type="obu" from="218756744#0" to="218746134#2" depart="0.0" departPos="random_free" departSpeed="max"/>
+
+    <!-- seg_01_02 | LIGHT | ratio=1.250 | speed=40.0 km/h | 1 vehicle(s) -->
+    <trip id="veh_01" type="obu" from="544537081#17" to="218746134#2" depart="13.3" departPos="random_free" departSpeed="max"/>
+
+    <!-- seg_02_03 | JAM | ratio=2.200 | speed=22.7 km/h | 3 vehicle(s) -->
+    <trip id="veh_02" type="obu" from="218746140#8" to="218746134#2" depart="26.7" departPos="random_free" departSpeed="max"/>
+    <trip id="veh_03" type="obu" from="218746140#8" to="218746134#2" depart="40.0" departPos="random_free" departSpeed="max"/>
+    <trip id="veh_04" type="obu" from="218746140#8" to="218746134#2" depart="53.3" departPos="random_free" departSpeed="max"/>
+
+    <!-- seg_03_04 | HEAVY | ratio=1.850 | speed=27.0 km/h | 2 vehicle(s) -->
+    <trip id="veh_05" type="obu" from="544537081#1" to="218746134#2" depart="66.7" departPos="random_free" departSpeed="max"/>
+    <trip id="veh_06" type="obu" from="544537081#1" to="218746134#2" depart="80.0" departPos="random_free" departSpeed="max"/>
+
+    <!-- seg_04_05 | MODERATE | ratio=1.450 | speed=34.5 km/h | 2 vehicle(s) -->
+    <trip id="veh_07" type="obu" from="-882296672#3" to="218746134#2" depart="93.3" departPos="random_free" departSpeed="max"/>
+    <trip id="veh_08" type="obu" from="-882296672#3" to="218746134#2" depart="106.7" departPos="random_free" departSpeed="max"/>
+
+    <!-- seg_05_06 | LIGHT | ratio=1.150 | speed=43.5 km/h | 1 vehicle(s) -->
+    <trip id="veh_09" type="obu" from="-1221667957" to="218746134#2" depart="120.0" departPos="random_free" departSpeed="max"/>
+
+</routes>

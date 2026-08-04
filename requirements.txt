@@ -1,0 +1,24 @@
+# VANET project — Python dependencies (Node 1 + TraCI bridge).
+# Install via:   pip install -r requirements.txt
+# Recommended:   inside a virtualenv (see scripts/install_kali.sh).
+
+# Google Maps API client (Directions / Distance Matrix / Roads)
+googlemaps>=4.10.0
+
+# Load GOOGLE_MAPS_API_KEY and other knobs from .env
+python-dotenv>=1.0.0
+
+# Direct HTTP for any REST calls not covered by googlemaps
+requests>=2.31.0
+
+# Geometry math: place RSUs every 1 km along the corridor polyline
+numpy>=1.24.0
+shapely>=2.0.0
+
+# Map projection — required by sumolib's convertLonLat2XY (lat/lon ↔ UTM)
+pyproj>=3.6.0
+
+# SUMO Python bindings — talk to a running SUMO instance over TraCI.
+# These must be compatible with the system SUMO (1.25.0 on Kali).
+traci>=1.20.0
+sumolib>=1.20.0

@@ -1,0 +1,18 @@
+[
+  {
+    "start_s": 200,
+    "end_s": 337,
+    "duration_s": 138,
+    "edge": "544537085#3",
+    "vehicles": [
+      "veh_02",
+      "veh_03",
+      "veh_04"
+    ],
+    "avg_speed_kmh": 3.42,
+    "centroid_x": 3471.25,
+    "centroid_y": 3925.54,
+    "nearest_rsu": "rsu_02",
+    "alert_message": "Traffic jam on edge 544537085#3 near rsu_02 — avg 3.42 km/h for 138 s — take U-turn at nearest junction"
+  }
+]

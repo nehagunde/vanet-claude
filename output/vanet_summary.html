@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VANET Traffic Jam Detection — Visakhapatnam NH-16</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #0d1117; color: #e6edf3; min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 30px 40px;
+    border-bottom: 2px solid #00b4d8;
+  }
+  header h1 { font-size: 1.8rem; color: #00b4d8; }
+  header p  { color: #8b949e; margin-top: 6px; font-size: 0.95rem; }
+  .container { max-width: 1300px; margin: 0 auto; padding: 30px 20px; }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px; margin-bottom: 30px;
+  }
+  .kpi {
+    background: #161b22; border: 1px solid #30363d;
+    border-radius: 10px; padding: 20px; text-align: center;
+  }
+  .kpi .val { font-size: 2.2rem; font-weight: bold; color: #00b4d8; }
+  .kpi .lbl { font-size: 0.8rem; color: #8b949e; margin-top: 4px; }
+  .kpi.danger .val { color: #ff4444; }
+  .kpi.warn   .val { color: #ffbe0b; }
+  .kpi.ok     .val { color: #3fb950; }
+  .card {
+    background: #161b22; border: 1px solid #30363d;
+    border-radius: 10px; padding: 24px; margin-bottom: 24px;
+  }
+  .card h2 {
+    font-size: 1.1rem; color: #00b4d8;
+    border-bottom: 1px solid #21262d; padding-bottom: 10px; margin-bottom: 16px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { background: #21262d; color: #8b949e;
+        padding: 8px 12px; text-align: left; }
+  td { padding: 8px 12px; border-bottom: 1px solid #21262d; }
+  tr:hover td { background: #1c2128; }
+  code { background: #21262d; padding: 2px 6px; border-radius: 4px;
+          font-size: 0.8rem; color: #79c0ff; }
+  .alert-box {
+    background: #0d1117; border: 1px solid #21262d;
+    border-radius: 6px; padding: 12px; max-height: 300px;
+    overflow-y: auto; font-family: monospace; font-size: 0.78rem;
+  }
+  .alert-line   { padding: 2px 0; color: #8b949e; }
+  .alert-jam    { color: #ff4444; font-weight: bold; }
+  .alert-det    { color: #ffbe0b; }
+  .alert-reroute{ color: #3fb950; }
+  .map-box {
+    background: #0d1117; border: 1px solid #21262d;
+    border-radius: 8px; padding: 10px; overflow-x: auto;
+  }
+  svg text { font-family: 'Segoe UI', sans-serif; }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 0.75rem; font-weight: bold; margin-left: 8px;
+  }
+  .badge-jam    { background: #3d1a1a; color: #ff4444; border: 1px solid #ff4444; }
+  .badge-ok     { background: #1a3d1a; color: #3fb950; border: 1px solid #3fb950; }
+  footer {
+    text-align: center; color: #484f58; font-size: 0.8rem;
+    padding: 20px; border-top: 1px solid #21262d; margin-top: 20px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚦 VANET Traffic Jam Detection & Alert System</h1>
+  <p>NH-16 Corridor · Gajuwaka → NAD Junction, Visakhapatnam, Andhra Pradesh</p>
+  <p style="margin-top:8px; font-size:0.85rem; color:#00b4d8;">
+    SUMO (Traffic Simulation) + NS-3 (802.11p WAVE) + Python Jam Detector
+  </p>
+</header>
+
+<div class="container">
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="val">7</div>
+      <div class="lbl">RSU Nodes (Fixed)</div>
+    </div>
+    <div class="kpi">
+      <div class="val">1</div>
+      <div class="lbl">OBU Vehicles (Mobile)</div>
+    </div>
+    <div class="kpi danger">
+      <div class="val">1</div>
+      <div class="lbl">Jam Events Detected</div>
+    </div>
+    <div class="kpi ok">
+      <div class="val">3</div>
+      <div class="lbl">Vehicles Rerouted</div>
+    </div>
+  </div>
+
+  <!-- Corridor Map -->
+  <div class="card">
+    <h2>📍 NH-16 Corridor — RSU Deployment Map</h2>
+    <div class="map-box">
+      <svg width="1000" height="110" xmlns="http://www.w3.org/2000/svg">
+        <!-- Road line -->
+        <line x1="50" y1="60" x2="960" y2="60"
+              stroke="#30363d" stroke-width="8" stroke-linecap="round"/>
+        <line x1="50" y1="60" x2="960" y2="60"
+              stroke="#444c56" stroke-width="4" stroke-dasharray="20,10"/>
+        <!-- Jam highlight -->
+        
+      <rect x="384.4" y="50" width="152.10000000000002" height="20"
+            fill="#ff4444" opacity="0.35" rx="4"/>
+      <text x="460.45" y="44" text-anchor="middle"
+            fill="#ff6b6b" font-size="10" font-weight="bold">⚠ JAM</text>
+        <!-- RSU markers -->
+        
+      <circle cx="60.2" cy="60" r="10" fill="#00b4d8" stroke="white" stroke-width="2"/>
+      <text x="60.2" y="85" text-anchor="middle"
+            fill="white" font-size="10">rsu_00</text>
+      <text x="60.2" y="97" text-anchor="middle"
+            fill="#aaa" font-size="9">Old Gajuwaka</text>
+      <circle cx="221.7" cy="60" r="10" fill="#00b4d8" stroke="white" stroke-width="2"/>
+      <text x="221.7" y="85" text-anchor="middle"
+            fill="white" font-size="10">rsu_01</text>
+      <text x="221.7" y="97" text-anchor="middle"
+            fill="#aaa" font-size="9">New Gajuwaka</text>
+      <circle cx="384.4" cy="60" r="10" fill="#ff4444" stroke="white" stroke-width="2"/>
+      <text x="384.4" y="85" text-anchor="middle"
+            fill="white" font-size="10">rsu_02</text>
+      <text x="384.4" y="97" text-anchor="middle"
+            fill="#aaa" font-size="9">BHPV</text>
+      <circle cx="536.5" cy="60" r="10" fill="#00b4d8" stroke="white" stroke-width="2"/>
+      <text x="536.5" y="85" text-anchor="middle"
+            fill="white" font-size="10">rsu_03</text>
+      <text x="536.5" y="97" text-anchor="middle"
+            fill="#aaa" font-size="9">Nathayyapalem</text>
+      <circle cx="685.7" cy="60" r="10" fill="#00b4d8" stroke="white" stroke-width="2"/>
+      <text x="685.7" y="85" text-anchor="middle"
+            fill="white" font-size="10">rsu_04</text>
+      <text x="685.7" y="97" text-anchor="middle"
+            fill="#aaa" font-size="9">Sheelanagar</text>
+      <circle cx="779.0" cy="60" r="10" fill="#00b4d8" stroke="white" stroke-width="2"/>
+      <text x="779.0" y="85" text-anchor="middle"
+            fill="white" font-size="10">rsu_05</text>
+      <text x="779.0" y="97" text-anchor="middle"
+            fill="#aaa" font-size="9">Gopalapatnam</text>
+      <circle cx="940.1" cy="60" r="10" fill="#00b4d8" stroke="white" stroke-width="2"/>
+      <text x="940.1" y="85" text-anchor="middle"
+            fill="white" font-size="10">rsu_06</text>
+      <text x="940.1" y="97" text-anchor="middle"
+            fill="#aaa" font-size="9">NAD Junction</text>
+        <!-- Direction labels -->
+        <text x="30" y="63" fill="#484f58" font-size="11">▶</text>
+        <text x="10" y="75" fill="#484f58" font-size="9">South</text>
+        <text x="945" y="75" fill="#484f58" font-size="9">North</text>
+      </svg>
+    </div>
+    <p style="color:#8b949e; font-size:0.8rem; margin-top:8px;">
+      ● Blue = RSU &nbsp;|&nbsp;
+      <span style="color:#ff4444">● Red</span> = Nearest RSU to detected jam &nbsp;|&nbsp;
+      <span style="color:#ff4444">■ Red band</span> = Jam segment (BHPV–Nathayyapalem)
+    </p>
+  </div>
+
+  <!-- Speed Chart -->
+  <div class="card">
+    <h2>📈 Vehicle Speed Timeline (600 s Simulation)</h2>
+    <p style="color:#aaa">Speed chart not available (install matplotlib)</p>
+    <p style="color:#8b949e; font-size:0.8rem; margin-top:8px;">
+      Yellow dashed line = 5 km/h jam threshold &nbsp;|&nbsp;
+      Red band = detected jam window
+    </p>
+  </div>
+
+  <!-- Jam Detection Results -->
+  <div class="card">
+    <h2>⚠️ Jam Detection Results
+      <span class="badge badge-jam">
+        JAM DETECTED
+      </span>
+    </h2>
+    <div style="background:#3d1a1a;border:1px solid #ff4444;border-radius:8px;padding:16px;margin-bottom:16px;"><b style="color:#ff4444">⚠ Jam confirmed at t=200s</b><br/>Edge: <code>544537085#3</code> &nbsp;|&nbsp; Near: rsu_02 &nbsp;|&nbsp; Avg speed: 3.42 km/h &nbsp;|&nbsp; Duration: 138s<br/><b style="color:#ffbe0b">Alert:</b> Traffic jam on BHPV–Nathayyapalem segment — take U-turn at BHPV Junction</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Start (s)</th><th>End (s)</th><th>Duration</th>
+          <th>Edge</th><th>Nearest RSU</th>
+          <th>Avg Speed</th><th>Vehicles</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>200 s</td>
+          <td>337 s</td>
+          <td>138 s</td>
+          <td><code>544537085#3</code></td>
+          <td>rsu_02</td>
+          <td>3.42 km/h</td>
+          <td>veh_02, veh_03, veh_04</td>
+        </tr></tbody>
+    </table>
+  </div>
+
+  <!-- Rerouting Events -->
+  <div class="card">
+    <h2>🔀 U-Turn Rerouting Events
+      <span class="badge badge-ok">3 vehicles diverted</span>
+    </h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Time (s)</th><th>Vehicle</th>
+          <th>Avoided Edge</th><th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>229 s</td>
+          <td>veh_02</td>
+          <td><code>['544537085#3']</code></td>
+          <td>REROUTED — avoid jam, take alternate path</td>
+        </tr>
+        <tr>
+          <td>229 s</td>
+          <td>veh_03</td>
+          <td><code>['544537085#3']</code></td>
+          <td>REROUTED — avoid jam, take alternate path</td>
+        </tr>
+        <tr>
+          <td>229 s</td>
+          <td>veh_04</td>
+          <td><code>['544537085#3']</code></td>
+          <td>REROUTED — avoid jam, take alternate path</td>
+        </tr>
+        <tr>
+          <td>289 s</td>
+          <td>veh_02</td>
+          <td><code>['544537085#3']</code></td>
+          <td>REROUTED — avoid jam, take alternate path</td>
+        </tr>
+        <tr>
+          <td>289 s</td>
+          <td>veh_03</td>
+          <td><code>['544537085#3']</code></td>
+          <td>REROUTED — avoid jam, take alternate path</td>
+        </tr>
+        <tr>
+          <td>289 s</td>
+          <td>veh_04</td>
+          <td><code>['544537085#3']</code></td>
+          <td>REROUTED — avoid jam, take alternate path</td>
+        </tr></tbody>
+    </table>
+  </div>
+
+  <!-- RSU Deployment Table -->
+  <div class="card">
+    <h2>📡 RSU Deployment Table (7 Units on NH-16)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>RSU ID</th><th>Area</th><th>Infra Type</th>
+          <th>Latitude</th><th>Longitude</th>
+          <th>SUMO X (m)</th><th>SUMO Y (m)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>rsu_00</td>
+          <td>Old Gajuwaka</td>
+          <td>Restaurant</td>
+          <td>17.685048</td>
+          <td>83.203902</td>
+          <td>3321.0</td>
+          <td>1847.0</td>
+        </tr>
+        <tr>
+          <td>rsu_01</td>
+          <td>New Gajuwaka</td>
+          <td>Bus Stand</td>
+          <td>17.693737</td>
+          <td>83.205536</td>
+          <td>3483.1</td>
+          <td>2810.8</td>
+        </tr>
+        <tr>
+          <td>rsu_02</td>
+          <td>BHPV</td>
+          <td>Highway Anchor</td>
+          <td>17.702503</td>
+          <td>83.205661</td>
+          <td>3485.0</td>
+          <td>3781.4</td>
+        </tr>
+        <tr>
+          <td>rsu_03</td>
+          <td>Nathayyapalem</td>
+          <td>Bus Stand</td>
+          <td>17.710709</td>
+          <td>83.205199</td>
+          <td>3425.4</td>
+          <td>4689.2</td>
+        </tr>
+        <tr>
+          <td>rsu_04</td>
+          <td>Sheelanagar</td>
+          <td>Bus Stand</td>
+          <td>17.718771</td>
+          <td>83.203601</td>
+          <td>3245.4</td>
+          <td>5579.7</td>
+        </tr>
+        <tr>
+          <td>rsu_05</td>
+          <td>Gopalapatnam</td>
+          <td>Highway Anchor</td>
+          <td>17.723778</td>
+          <td>83.205720</td>
+          <td>3463.7</td>
+          <td>6136.6</td>
+        </tr>
+        <tr>
+          <td>rsu_06</td>
+          <td>NAD Junction</td>
+          <td>Bus Stand</td>
+          <td>17.732260</td>
+          <td>83.223209</td>
+          <td>5308.0</td>
+          <td>7097.5</td>
+        </tr></tbody>
+    </table>
+  </div>
+
+  <!-- Alerts Log -->
+  <div class="card">
+    <h2>📋 Alerts Log Excerpt (JAM / REROUTE events)</h2>
+    <div class="alert-box">
+      <div class="alert-line alert-det">[T=0.0] NODE=0 SENT=JAM_DETECTED SPEED=0.0 X=3303.3 Y=1851.3</div>
+<div class="alert-line alert-det">[T=0.0] NODE=1 SENT=JAM_DETECTED SPEED=0.0 X=3501.1 Y=2659.8</div>
+<div class="alert-line alert-det">[T=0.0] NODE=2 SENT=JAM_DETECTED SPEED=0.0 X=3484.9 Y=4169.2</div>
+<div class="alert-line alert-det">[T=0.0] NODE=3 SENT=JAM_DETECTED SPEED=0.0 X=3493.6 Y=3957.8</div>
+<div class="alert-line alert-det">[T=0.0] NODE=4 SENT=JAM_DETECTED SPEED=0.0 X=3491.8 Y=3910.9</div>
+<div class="alert-line alert-det">[T=0.0] NODE=5 SENT=JAM_DETECTED SPEED=0.0 X=3412.4 Y=4707.2</div>
+<div class="alert-line alert-det">[T=0.0] NODE=6 SENT=JAM_DETECTED SPEED=0.0 X=3426.7 Y=4623.9</div>
+<div class="alert-line alert-det">[T=0.0] NODE=7 SENT=JAM_DETECTED SPEED=0.0 X=3245.5 Y=5595.1</div>
+<div class="alert-line alert-det">[T=0.0] NODE=8 SENT=JAM_DETECTED SPEED=0.0 X=3249.2 Y=5569.1</div>
+<div class="alert-line alert-det">[T=0.0] NODE=9 SENT=JAM_DETECTED SPEED=0.0 X=0.0 Y=0.0</div>
+<div class="alert-line alert-reroute">[T=229.0] NODE=RSU TYPE=REROUTE VEH=veh_02 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=229.0] NODE=RSU TYPE=REROUTE VEH=veh_03 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=229.0] NODE=RSU TYPE=REROUTE VEH=veh_04 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=289.0] NODE=RSU TYPE=REROUTE VEH=veh_02 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=289.0] NODE=RSU TYPE=REROUTE VEH=veh_03 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=289.0] NODE=RSU TYPE=REROUTE VEH=veh_04 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=229.0] NODE=RSU TYPE=REROUTE VEH=veh_02 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=229.0] NODE=RSU TYPE=REROUTE VEH=veh_03 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=229.0] NODE=RSU TYPE=REROUTE VEH=veh_04 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=289.0] NODE=RSU TYPE=REROUTE VEH=veh_02 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=289.0] NODE=RSU TYPE=REROUTE VEH=veh_03 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=289.0] NODE=RSU TYPE=REROUTE VEH=veh_04 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=229.0] NODE=RSU TYPE=REROUTE VEH=veh_02 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=229.0] NODE=RSU TYPE=REROUTE VEH=veh_03 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=229.0] NODE=RSU TYPE=REROUTE VEH=veh_04 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=289.0] NODE=RSU TYPE=REROUTE VEH=veh_02 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=289.0] NODE=RSU TYPE=REROUTE VEH=veh_03 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-reroute">[T=289.0] NODE=RSU TYPE=REROUTE VEH=veh_04 JAM_EDGE=['544537085#3'] ACTION="REROUTED — avoid jam, take alternate path"</div>
+<div class="alert-line alert-jam">[T=200.0] NODE=DETECTOR TYPE=JAM_ALERT EDGE=544537085#3 RSU=rsu_02 VEHICLES=veh_02,veh_03,veh_04 AVG_SPEED=3.42 DURATION=138s MSG="Traffic jam on edge 544537085#3 near rsu_02 — avg 3.42 km/h for 138 s — U-turn recommended"</div>
+
+    </div>
+    <p style="color:#8b949e; font-size:0.8rem; margin-top:8px;">
+      <span style="color:#ff4444">■</span> JAM_ALERT &nbsp;|&nbsp;
+      <span style="color:#ffbe0b">■</span> JAM_DETECTED &nbsp;|&nbsp;
+      <span style="color:#3fb950">■</span> REROUTE
+    </p>
+  </div>
+
+  <!-- System Architecture -->
+  <div class="card">
+    <h2>🏗️ System Architecture</h2>
+    <table>
+      <thead>
+        <tr><th>Phase</th><th>Component</th><th>Role</th><th>Output</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>place_rsus.py</td><td>RSU placement on NH-16</td><td>rsu_positions.csv, corridor.net.xml</td></tr>
+        <tr><td>2</td><td>generate_routes.py</td><td>Vehicle routes from traffic data</td><td>routes.rou.xml</td></tr>
+        <tr><td>3a</td><td>traci_supervisor.py</td><td>SUMO↔NS-3 bridge via TraCI</td><td>mobility.ns2, speed_log.json</td></tr>
+        <tr><td>3b</td><td>vanet-scenario.cc</td><td>802.11p WAVE radio simulation</td><td>alerts.log (beacons)</td></tr>
+        <tr><td>4a</td><td>jam_detector.py</td><td>Offline jam detection</td><td>jam_report.json</td></tr>
+        <tr><td>4b</td><td>rerouter.py</td><td>Live TraCI U-turn rerouting</td><td>reroute_log.json</td></tr>
+        <tr><td>5</td><td>visualise.py</td><td>Charts + HTML dashboard</td><td>vanet_summary.html ← you are here</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+<footer>
+  VANET Prototype · SUMO 1.25 + NS-3 (802.11p) + Python · NH-16 Visakhapatnam
+</footer>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /mnt/c/Users/NEHAGUNDE/Desktop/vanet_claude -type f | sort 2>/dev/null || find \"C:/Users/NEHAGUNDE/Desktop/vanet_claude\" -type f | sort 2>/dev/null)",
+      "PowerShell(Get-ChildItem -Recurse \"C:\\\\Users\\\\NEHAGUNDE\\\\Desktop\\\\vanet_claude\" | Where-Object { !$_.PSIsContainer } | Select-Object -ExpandProperty FullName | Sort-Object)",
+      "PowerShell(winget install OpenJS.NodeJS --silent --accept-package-agreements --accept-source-agreements 2>&1)"
+    ]
+  }
+}

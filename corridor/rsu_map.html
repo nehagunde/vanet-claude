@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>NH-16 RSU Placement — Visakhapatnam</title>
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body { margin:0; font-family:Arial,sans-serif; }
+    #map { height:100vh; width:100%; }
+    .rsu-label {
+      background:rgba(160,0,0,0.88); border:none; border-radius:4px;
+      color:#fff; font-weight:bold; font-size:11px;
+      padding:3px 8px; white-space:nowrap;
+    }
+    .rsu-label::before { display:none; }
+    .route-tip {
+      background:#e65c00; color:#fff; font-weight:bold;
+      border:none; border-radius:4px; padding:3px 8px;
+    }
+    #legend {
+      position:absolute; top:10px; left:60px; z-index:1000;
+      background:#fff; padding:10px 14px; border-radius:6px;
+      box-shadow:0 2px 8px rgba(0,0,0,.3); font-size:13px;
+      max-width:360px; line-height:1.6;
+    }
+    #legend h3 { margin:0 0 6px; font-size:14px; }
+  </style>
+</head>
+<body>
+<div id="legend">
+  <h3>NH-16 RSU Placement — Visakhapatnam</h3>
+  <b>7 RSUs</b> at real infrastructure along Gajuwaka → NAD Junction.<br>
+  <span style="color:red">&#9679;</span> Road Side Unit &nbsp;
+  <span style="color:#888">&#9900;</span> 300 m radio range<br>
+  <span style="color:#e65c00;font-weight:bold">&#9135;&#9135;</span> NH-16 highway (Gajuwaka → NAD Junction)
+</div>
+<div id="map"></div>
+<script>
+  var map = L.map('map').setView([17.709544,83.207547], 15);
+  // CartoDB Voyager tiles — work from file:// without referer restrictions
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    maxZoom:19,
+    subdomains:'abcd',
+    attribution:'&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors &copy; <a href="https://carto.com">CARTO</a>'
+  }).addTo(map);
+
+  // NH-16 actual road geometry
+  var roadLine = L.polyline([
+      [17.689424,83.205662],
+      [17.689619,83.205732],
+      [17.689790,83.205771],
+      [17.689973,83.205806],
+      [17.690282,83.205836],
+      [17.690559,83.205847],
+      [17.690800,83.205825],
+      [17.691010,83.205802],
+      [17.691199,83.205776],
+      [17.692481,83.205575],
+      [17.693478,83.205393],
+      [17.693717,83.205360],
+      [17.693909,83.205326],
+      [17.694025,83.205309],
+      [17.694290,83.205267],
+      [17.694544,83.205237],
+      [17.694794,83.205217],
+      [17.695020,83.205210],
+      [17.695371,83.205219],
+      [17.697260,83.205334],
+      [17.698215,83.205396],
+      [17.699239,83.205457],
+      [17.700506,83.205532],
+      [17.701842,83.205617],
+      [17.702491,83.205660],
+      [17.703472,83.205743],
+      [17.704084,83.205776],
+      [17.704693,83.205808],
+      [17.705163,83.205823],
+      [17.705440,83.205801],
+      [17.706244,83.205682],
+      [17.707961,83.205419],
+      [17.708618,83.205321],
+      [17.709204,83.205231],
+      [17.709637,83.205185],
+      [17.710037,83.205131],
+      [17.710212,83.205108],
+      [17.710370,83.205076],
+      [17.710642,83.205034],
+      [17.711078,83.204964],
+      [17.711356,83.204919],
+      [17.711975,83.204837],
+      [17.712557,83.204742],
+      [17.713709,83.204546],
+      [17.714456,83.204441],
+      [17.716470,83.204163],
+      [17.717155,83.204051],
+      [17.718939,83.203826],
+      [17.719140,83.203800],
+      [17.719509,83.203739],
+      [17.719593,83.203726],
+      [17.719687,83.203716],
+      [17.719915,83.203675],
+      [17.720740,83.203573],
+      [17.721165,83.203581],
+      [17.721510,83.203637],
+      [17.721747,83.203681],
+      [17.722071,83.203824],
+      [17.722217,83.203905],
+      [17.722558,83.204161],
+      [17.722735,83.204314],
+      [17.722883,83.204460],
+      [17.723105,83.204753],
+      [17.723778,83.205720]
+    ], {color:'#e65c00',weight:7,opacity:0.75}).addTo(map).bindTooltip('NH-16 — Gajuwaka to NAD Junction',{sticky:true,className:'route-tip'})
+  var roadLatLngs = roadLine.getLatLngs();
+
+  // ── Helpers: find closest point on the road polyline to a given RSU ─────────
+  function closestPtOnSegment(p, a, b) {
+    var dx = b.lng - a.lng, dy = b.lat - a.lat;
+    var lenSq = dx*dx + dy*dy;
+    if (lenSq === 0) return L.latLng(a.lat, a.lng);
+    var t = Math.max(0, Math.min(1,
+      ((p.lng-a.lng)*dx + (p.lat-a.lat)*dy) / lenSq));
+    return L.latLng(a.lat + t*dy, a.lng + t*dx);
+  }
+
+  function closestPtOnRoad(lat, lon) {
+    var p = L.latLng(lat, lon);
+    var bestDist = Infinity, bestPt = roadLatLngs[0];
+    for (var i = 0; i < roadLatLngs.length - 1; i++) {
+      var c = closestPtOnSegment(p, roadLatLngs[i], roadLatLngs[i+1]);
+      var d = map.distance(p, c);
+      if (d < bestDist) { bestDist = d; bestPt = c; }
+    }
+    return { pt: bestPt, dist: Math.round(bestDist) };
+  }
+
+  function addRSU(lat, lon, id, area, place, infra) {
+    // 300 m radio-range circle
+    L.circle([lat,lon], {
+      radius:300, color:'#cc0000', weight:1,
+      fillColor:'#ff4444', fillOpacity:0.07, dashArray:'4,4'
+    }).addTo(map);
+
+    // ── Offset line: RSU → nearest point on NH-16 ──────────────────────────
+    var result  = closestPtOnRoad(lat, lon);
+    var nearPt  = result.pt;
+    var distM   = result.dist;
+
+    // Dashed black line showing the gap
+    L.polyline([[lat, lon], [nearPt.lat, nearPt.lng]], {
+      color:'#333333', weight:2, dashArray:'5,5', opacity:0.85
+    }).addTo(map);
+
+    // Distance label at midpoint of the offset line
+    var midLat = (lat + nearPt.lat) / 2;
+    var midLon = (lon  + nearPt.lng) / 2;
+    L.marker([midLat, midLon], {
+      icon: L.divIcon({
+        html: '<div style="background:#fff;border:1.5px solid #333;'
+            + 'border-radius:4px;padding:1px 5px;font-size:11px;'
+            + 'font-weight:bold;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.3);">'
+            + distM + ' m</div>',
+        iconAnchor: [22, 10],
+        className: ''
+      })
+    }).addTo(map);
+
+    // Red RSU dot
+    var dot = L.circleMarker([lat,lon], {
+      radius:10, color:'#8b0000', weight:2,
+      fillColor:'#ff0000', fillOpacity:1
+    }).addTo(map);
+
+    dot.bindTooltip(
+      '<b>' + id + '</b><br>' + area + '<br><i>' + infra + '</i>',
+      {permanent:true, direction:'right', offset:[12,0], className:'rsu-label'}
+    ).openTooltip();
+
+    dot.bindPopup(
+      '<b>' + id + '</b><br>' +
+      '<b>Area:</b> ' + area + '<br>' +
+      '<b>Infrastructure:</b> ' + infra + '<br>' +
+      '<b>Place:</b> ' + place + '<br>' +
+      '<b>Lat:</b> ' + lat.toFixed(6) + '<br>' +
+      '<b>Lon:</b> ' + lon.toFixed(6) + '<br>' +
+      '<b>Distance to NH-16:</b> ' + distM + ' m<br>' +
+      '<small>802.11p radio range: 300 m</small>'
+    );
+  }
+
+  addRSU(17.685048,83.203902,"RSU_00","Old Gajuwaka","New Gajuwaka","Restaurant");
+  addRSU(17.693737,83.205536,"RSU_01","New Gajuwaka","Nathayyapalem","Bus Stand");
+  addRSU(17.702503,83.205661,"RSU_02","BHPV","Anakapalli - Visakhapatnam - Anandapuram Main Road","Highway Anchor");
+  addRSU(17.710709,83.205199,"RSU_03","Nathayyapalem","Nathayyapalem","Bus Stand");
+  addRSU(17.718771,83.203601,"RSU_04","Sheelanagar","Jaggayyapalem","Bus Stand");
+  addRSU(17.723778,83.205720,"RSU_05","Gopalapatnam","Anakapalli - Visakhapatnam - Anandapuram Main Road","Highway Anchor");
+  addRSU(17.732260,83.223209,"RSU_06","NAD Junction","Anakapalli - Visakhapatnam - Anandapuram Main Road","Bus Stand");
+</script>
+</body>
+</html>

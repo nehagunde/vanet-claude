@@ -1,0 +1,44 @@
+# Secrets — never commit
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# VANET runtime artifacts (regenerated each run)
+output/results.csv
+output/alerts.log
+output/screenshots/*
+!output/screenshots/.gitkeep
+data_node/traffic_state.json
+data_node/mock/*.json
+!data_node/mock/.gitkeep
+
+# Map-data downloads (large; regenerate from Phase 1 scripts)
+corridor/*.osm
+corridor/*.net.xml
+corridor/*.geojson
+!corridor/.gitkeep
+
+# NS-3 build artifacts (if NS-3 source ends up in-tree)
+sim/ns3/build/
+*.o
+*.so
+*.a
+
+# Logs
+*.log

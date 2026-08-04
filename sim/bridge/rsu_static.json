@@ -1,0 +1,65 @@
+[
+  {
+    "ns3_node_id": 10,
+    "rsu_id": "rsu_00",
+    "area": "Old Gajuwaka",
+    "x_m": 3320.99,
+    "y_m": 1846.97,
+    "lat": 17.685048,
+    "lon": 83.203902
+  },
+  {
+    "ns3_node_id": 11,
+    "rsu_id": "rsu_01",
+    "area": "New Gajuwaka",
+    "x_m": 3483.1,
+    "y_m": 2810.81,
+    "lat": 17.693737,
+    "lon": 83.205536
+  },
+  {
+    "ns3_node_id": 12,
+    "rsu_id": "rsu_02",
+    "area": "BHPV",
+    "x_m": 3484.99,
+    "y_m": 3781.42,
+    "lat": 17.702503,
+    "lon": 83.205661
+  },
+  {
+    "ns3_node_id": 13,
+    "rsu_id": "rsu_03",
+    "area": "Nathayyapalem",
+    "x_m": 3425.37,
+    "y_m": 4689.2,
+    "lat": 17.710709,
+    "lon": 83.205199
+  },
+  {
+    "ns3_node_id": 14,
+    "rsu_id": "rsu_04",
+    "area": "Sheelanagar",
+    "x_m": 3245.36,
+    "y_m": 5579.66,
+    "lat": 17.718771,
+    "lon": 83.203601
+  },
+  {
+    "ns3_node_id": 15,
+    "rsu_id": "rsu_05",
+    "area": "Gopalapatnam",
+    "x_m": 3463.72,
+    "y_m": 6136.56,
+    "lat": 17.723778,
+    "lon": 83.20572
+  },
+  {
+    "ns3_node_id": 16,
+    "rsu_id": "rsu_06",
+    "area": "NAD Junction",
+    "x_m": 5307.99,
+    "y_m": 7097.46,
+    "lat": 17.73226,
+    "lon": 83.223209
+  }
+]

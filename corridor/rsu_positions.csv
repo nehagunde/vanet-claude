@@ -1,0 +1,8 @@
+id,area,infra_type,nearest_place,lat,lon,x_m,y_m,dist_from_prev_km,dist_to_next_km
+rsu_00,Old Gajuwaka,Restaurant,"New Gajuwaka, Turakalapalem",17.685048,83.203902,3320.99,1846.97,,0.9815
+rsu_01,New Gajuwaka,Bus Stand,"Nathayyapalem, Akkireddipalem",17.693737,83.205536,3483.10,2810.81,0.9815,0.9749
+rsu_02,BHPV,Highway Anchor,"Anakapalli - Visakhapatnam - Anandapuram Main Road, Nathayyapalem",17.702503,83.205661,3484.99,3781.42,0.9749,0.9137
+rsu_03,Nathayyapalem,Bus Stand,"Nathayyapalem, Akkireddipalem",17.710709,83.205199,3425.37,4689.20,0.9137,0.9123
+rsu_04,Sheelanagar,Bus Stand,"Jaggayyapalem, Rural Gopalapatnam",17.718771,83.203601,3245.36,5579.66,0.9123,0.6003
+rsu_05,Gopalapatnam,Highway Anchor,"Anakapalli - Visakhapatnam - Anandapuram Main Road, Nathayyapalem",17.723778,83.205720,3463.72,6136.56,0.6003,2.0786
+rsu_06,NAD Junction,Bus Stand,"Anakapalli - Visakhapatnam - Anandapuram Main Road, Gopalapatnam",17.732260,83.223209,5307.99,7097.46,2.0786,
