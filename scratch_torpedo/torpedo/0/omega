@@ -2,10 +2,8 @@
 | =========                 |                                                 |
 | \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
 |  \\    /   O peration     | omega = sqrt(k) / (Cmu^0.25 * L), L = 0.07*D     |
-|    \\/     M anipulation  | sqrt(0.094)/(0.5477 * 0.0035) = 160 1/s          |
-|                            | CORRECTED: old comment used sqrt(24) by mistake |
-|                            | (that's where the wrong "2558" came from); the  |
-|                            | field value (0.0084) was also wrong either way  |
+|    \\/     M anipulation  | sqrt(0.09375)/(0.5477 * 0.0035) = 159.7 1/s      |
+|                            | (was 319.4, which is the k=0.375/U=50 value)    |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -18,14 +16,14 @@ FoamFile
 
 dimensions      [0 0 -1 0 0 0 0];
 
-internalField   uniform 319.4;
+internalField   uniform 159.7;
 
 boundaryField
 {
     inlet
     {
         type            fixedValue;
-        value           uniform 319.4;
+        value           uniform 159.7;
     }
 
     outlet
@@ -46,7 +44,7 @@ boundaryField
     torpedo
     {
         type            omegaWallFunction;
-        value           uniform 319.4;
+        value           uniform 159.7;
     }
 
     frontAndBack

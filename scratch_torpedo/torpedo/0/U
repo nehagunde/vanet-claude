@@ -2,8 +2,8 @@
 | =========                 |                                                 |
 | \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
 |  \\    /   O peration     | Version:  v2412                                 |
-|   \\  /    A nd           | CORRECTED: inlet speed set to the 25 m/s value  |
-|    \\/     M anipulation  | that k, omega and p were actually derived from  |
+|   \\  /    A nd           | U = 25 m/s: matches the sigma->p_out formula    |
+|    \\/     M anipulation  | in 0/p and the k, omega derivations below       |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -16,7 +16,7 @@ FoamFile
 
 dimensions      [0 1 -1 0 0 0 0];
 
-internalField   uniform (50.00 0 0);
+internalField   uniform (25.00 0 0);
 
 boundaryField
 {
