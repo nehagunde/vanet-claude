@@ -1,0 +1,58 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | omega = sqrt(k) / (Cmu^0.25 * L), L = 0.07*D     |
+|    \\/     M anipulation  | sqrt(0.094)/(0.5477 * 0.0035) = 160 1/s          |
+|                            | CORRECTED: old comment used sqrt(24) by mistake |
+|                            | (that's where the wrong "2558" came from); the  |
+|                            | field value (0.0084) was also wrong either way  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      omega;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [0 0 -1 0 0 0 0];
+
+internalField   uniform 319.4;
+
+boundaryField
+{
+    inlet
+    {
+        type            fixedValue;
+        value           uniform 319.4;
+    }
+
+    outlet
+    {
+        type            zeroGradient;
+    }
+
+    upperWall
+    {
+        type            symmetryPlane;
+    }
+
+    lowerWall
+    {
+        type            symmetryPlane;
+    }
+
+    torpedo
+    {
+        type            omegaWallFunction;
+        value           uniform 319.4;
+    }
+
+    frontAndBack
+    {
+        type            empty;
+    }
+}
+
+// ************************************************************************* //

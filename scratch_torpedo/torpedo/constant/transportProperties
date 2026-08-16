@@ -1,0 +1,45 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2412                                 |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      transportProperties;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+phases (vapour water);
+
+water
+{
+    transportModel  Newtonian;
+    nu              1.02e-06;     // kinematic viscosity [m2/s]
+    rho             1025;        // density [kg/m3]
+}
+
+// ------------------ VAPOR ------------------ //
+vapour
+{
+    transportModel  Newtonian;
+    nu              1.3e-05;     // vapor kinematic viscosity [m2/s]
+    rho             0.023;       // vapor density [kg/m3]
+}
+pSat            3169;   // saturation pressure (Pa)
+
+phaseChangeModel SchnerrSauer;
+
+SchnerrSauerCoeffs
+{
+    n       1e13;
+    dNuc    2e-6;
+    Cc      1;
+    Cv      1;
+}
+
+// ************************************************************************* //

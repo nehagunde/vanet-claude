@@ -1,0 +1,116 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2412                                 |
+|   \\  /    A nd           | endTime extended to allow ~6 flow-through times  |
+|    \\/     M anipulation  | (L/U = 4/80 = 0.05 s; need ~5-10x for cavity)    |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+application     cavitatingFoam;
+
+startFrom       latestTime;
+
+startTime       0;
+
+stopAt          endTime;
+
+endTime         1.2;  // ~7.5 flow-throughs at U=25.0 m/s (L/U=0.160s)
+
+deltaT          1e-6;
+maxDeltaT       5e-6;
+
+writeControl    timeStep;
+
+writeInterval   100;
+purgeWrite      0;
+
+writeFormat     ascii;
+
+writePrecision  8;
+
+writeCompression off;
+
+timeFormat      general;
+timePrecision    6;
+
+runTimeModifiable yes;
+
+adjustTimeStep  yes;
+
+maxCo           0.2;
+
+maxAcousticCo   0.2;
+
+
+// ************************************************************************* //
+
+// ---------------------------- FUNCTION OBJECTS ---------------------------- //
+functions
+{
+    Co
+    {
+        type            CourantNo;
+        libs            (fieldFunctionObjects);
+        writeControl    writeTime;
+        log             true;
+    }
+
+    yPlus
+    {
+        type            yPlus;
+        libs            (fieldFunctionObjects);
+        writeControl    writeTime;
+        patches         (torpedo);
+        log             true;
+    }
+
+    forceCoeffs1
+    {
+        type            forceCoeffs;
+        libs            (forces);
+        writeControl    timeStep;
+        writeInterval   50;
+
+        log             yes;
+        patches         (torpedo);
+
+        p               p;
+        U               U;
+        rho             rho;
+        rhoInf          1025;
+
+        magUInf         50.00;   // matches 0/U for this case
+        lRef            0.34;        // body length
+        Aref            0.001963;    // pi * (0.025)^2 frontal area
+
+        CofR            (0.09 0 0);
+        dragDir         (1 0 0);
+        liftDir         (0 1 0);
+        pitchAxis       (0 0 1);
+    }
+
+    cavityVolume
+    {
+        type            volFieldValue;
+        libs            (fieldFunctionObjects);
+        fields          (alpha.vapour);
+        operation       volIntegrate;
+        regionType      all;
+        writeControl    timeStep;
+        writeInterval   50;
+        writeFields     false;
+        log             true;
+    }
+
+    
+}
+
+// ************************************************************************* //
