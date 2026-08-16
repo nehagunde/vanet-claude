@@ -3,7 +3,7 @@
 | \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
 |  \\    /   O peration     | Version:  v2412                                 |
 |   \\  /    A nd           | endTime extended to allow ~6 flow-through times  |
-|    \\/     M anipulation  | (L/U = 4/80 = 0.05 s; need ~5-10x for cavity)    |
+|    \\/     M anipulation  | (L/U = 4/25 = 0.16 s; need ~5-10x for cavity)    |
 \*---------------------------------------------------------------------------*/
 FoamFile
 {
@@ -87,7 +87,7 @@ functions
         rho             rho;
         rhoInf          1025;
 
-        magUInf         50.00;   // matches 0/U for this case
+        magUInf         25.00;   // matches 0/U for this case
         lRef            0.34;        // body length
         Aref            0.001963;    // pi * (0.025)^2 frontal area
 
