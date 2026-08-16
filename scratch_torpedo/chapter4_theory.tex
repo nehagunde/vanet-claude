@@ -1,0 +1,164 @@
+% ==========================================================================
+% Chapter 4 (expanded): Theoretical Model
+% Governing equations for multiphase cavitating flow and the outlet-pressure
+% derivation for a target cavitation number / supercavitation onset.
+% Drop this into your existing Chapter 4 in place of / alongside Sections 4.1-4.3.
+% ==========================================================================
+
+\section{Governing equations of the multiphase cavitating flow}
+
+The flow is treated as a homogeneous liquid-vapour mixture, consistent with the
+\texttt{cavitatingFoam} barotropic-mixture solver used for the CFD case
+(Chapter 5). The mixture density is
+\begin{equation}
+    \rho = \alpha_v \rho_v + \alpha_l \rho_l, \qquad \alpha_v + \alpha_l = 1,
+\end{equation}
+where $\alpha_v$ is the vapour volume fraction.
+
+\paragraph{Mixture continuity.}
+\begin{equation}
+    \frac{\partial \rho}{\partial t} + \nabla\!\cdot(\rho \mathbf{U}) = 0
+\end{equation}
+
+\paragraph{Vapour volume-fraction transport.}
+\begin{equation}
+    \frac{\partial \alpha_v}{\partial t} + \nabla\!\cdot(\alpha_v \mathbf{U}) = \frac{\dot m}{\rho_v}
+\end{equation}
+where $\dot m$ is the interphase mass-transfer rate (evaporation/condensation).
+
+\paragraph{Mixture momentum (RANS).}
+\begin{equation}
+    \frac{\partial (\rho \mathbf{U})}{\partial t} + \nabla\!\cdot(\rho \mathbf{U}\mathbf{U})
+    = -\nabla p + \nabla\!\cdot\!\left[\mu_{\text{eff}}\left(\nabla \mathbf{U} + \nabla \mathbf{U}^T\right)\right]
+\end{equation}
+with $\mu_{\text{eff}} = \mu + \mu_t$, $\mu_t$ from the $k$-$\omega$ SST closure.
+
+\paragraph{Barotropic equation of state} (linear compressibility model, as in
+\texttt{thermodynamicProperties}):
+\begin{align}
+    \rho_l(p) &= \rho_{l,\text{sat}} + \psi_l (p - p_{\text{sat}}) \\
+    \rho_v(p) &= \rho_{v,\text{sat}} + \psi_v (p - p_{\text{sat}})
+\end{align}
+Note $c_l = \psi_l^{-1/2} \approx 1508\ \text{m/s}$, matching the physical speed of
+sound in water — confirming the compressibility constants are physically
+grounded, not arbitrary numerical parameters.
+
+\paragraph{Interphase mass transfer (Schnerr--Sauer, Rayleigh--Plesset based).}
+\begin{equation}
+    \dot m = C\,\frac{\rho_v \rho_l}{\rho}\,\alpha_v(1-\alpha_v)\,\frac{3}{R}
+    \sqrt{\frac{2}{3}\frac{|p_v - p|}{\rho_l}}\ \operatorname{sign}(p_v - p)
+\end{equation}
+with bubble radius $R$ linked to $\alpha_v$ and the bubble number density $n$ by
+\begin{equation}
+    \alpha_v = \frac{n \tfrac{4}{3}\pi R^3}{1 + n \tfrac{4}{3}\pi R^3}.
+\end{equation}
+This source term is the mechanism that pins the local pressure to $p \approx p_v$
+wherever a cavity forms; the cavitation number below follows directly from it
+rather than being an independent assumption.
+
+\section{Reduction to Bernoulli's equation outside the cavity}
+
+Since $U_\infty = 25\ \text{m/s} \ll c_l$ (Mach $\approx 0.017$), the liquid region
+is effectively incompressible and the momentum equation reduces along a
+streamline to
+\begin{equation}
+    p + \tfrac12 \rho_l U^2 = p_\infty + \tfrac12 \rho_l U_\infty^2,
+\end{equation}
+giving the pressure coefficient
+\begin{equation}
+    C_p = \frac{p - p_\infty}{\tfrac12 \rho_l U_\infty^2} = 1 - \left(\frac{U}{U_\infty}\right)^2.
+\end{equation}
+
+\section{Cavity-surface condition and the cavitation number}
+
+Setting $p = p_v$ (the value the mass-transfer source term enforces on the
+cavity surface) in the pressure-coefficient relation:
+\begin{equation}
+    C_{p,\text{cavity}} = \frac{p_v - p_\infty}{\tfrac12 \rho_l U_\infty^2} = -\sigma,
+    \qquad
+    \sigma \equiv \frac{p_\infty - p_v}{\tfrac12 \rho_l U_\infty^2}.
+\end{equation}
+
+\section{Outlet pressure boundary condition and the target-$\sigma$ inversion}
+
+The pressure-correction (PIMPLE) system requires exactly one Dirichlet
+condition on $p$ to fix the absolute pressure level of the domain. The inlet
+uses \texttt{zeroGradient} (Neumann) for $p$; the outlet, placed far downstream
+where the flow has relaxed to the undisturbed ambient state, is the fixed-value
+condition, so numerically $p_{\text{outlet}} \equiv p_\infty$.
+
+Inverting the cavitation-number definition for a target $\sigma^*$:
+\begin{equation}
+    \boxed{p_{\text{outlet}} = p_v + \sigma^* \left(\tfrac12 \rho_l U_\infty^2\right)}
+\end{equation}
+
+For this case ($\rho_l = 1025\ \text{kg/m}^3$, $p_v = 3169\ \text{Pa}$,
+$U_\infty = 25\ \text{m/s}$, $\tfrac12\rho U_\infty^2 = 320{,}312.5\ \text{Pa}$):
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ccl}
+\toprule
+$\sigma$ (target) & $p_{\text{outlet}}$ (Pa) & Regime \\
+\midrule
+0.20 & 67{,}200 & Partial cavity (staged start case) \\
+0.10 & 35{,}200 & Developing cavity \\
+0.05 & 19{,}200 & Target: supercavitation \\
+\bottomrule
+\end{tabular}
+\caption{Outlet pressure required for each target cavitation number.}
+\end{table}
+
+\paragraph{Stability constraint.} The mixture sound speed follows Wood's
+equation
+\begin{equation}
+    \frac{1}{\rho c^2} = \frac{\alpha_v}{\rho_v c_v^2} + \frac{\alpha_l}{\rho_l c_l^2},
+\end{equation}
+which collapses to only a few m/s in a two-phase cell. If $p_{\text{outlet}}
+\le p_v$, the boundary cell itself has near-zero acoustic stiffness and the
+fixed-value pressure BC becomes ill-posed, causing solver divergence. This is
+why $\sigma$ must be stepped down in stages (0.20 $\to$ 0.10 $\to$ 0.05) from a
+converged higher-$\sigma$ solution rather than initialized directly at the
+target.
+
+\section{Cavity size from a momentum/drag balance}
+
+The cavitator drag coefficient follows the Reichardt closure
+\begin{equation}
+    C_d(\sigma) = C_{d0}(1+\sigma), \qquad C_{d0} \approx 0.8 \text{ for a sharp-edged disk}
+\end{equation}
+Since the pressure inside a developed cavity is essentially uniform at $p_v$,
+the net pressure thrust over the cavity's maximum cross-section balances the
+cavitator drag:
+\begin{equation}
+    D \approx \sigma \left(\tfrac12 \rho U_\infty^2\right) A_c
+    = C_d(\sigma)\left(\tfrac12 \rho U_\infty^2\right) A_n
+\end{equation}
+which gives the maximum cavity diameter
+\begin{equation}
+    \boxed{D_c = d_n \sqrt{\frac{C_{d0}(1+\sigma)}{\sigma}}}
+\end{equation}
+
+For the $\varnothing 20\ \text{mm}$ disk cavitator ($d_n = 0.02\ \text{m}$)
+against the $50\ \text{mm}$ body diameter:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ccl}
+\toprule
+$\sigma$ & $D_c$ & vs.\ 50 mm body \\
+\midrule
+0.20 & 43.9 mm & cavity smaller than body \\
+0.10 & 59.3 mm & cavity just exceeds body \\
+0.05 & 82.0 mm & body fully enveloped -- supercavitation \\
+\bottomrule
+\end{tabular}
+\caption{Predicted maximum cavity diameter vs.\ cavitation number.}
+\end{table}
+
+Cavity length does not reduce to a closed form from this simple momentum
+balance; it requires the full slender-body cavity-shape solution (Garabedian,
+1956). Validate $L_c$ either against the correlation in reference [3]
+(Lee \& Kim, 2009, for disk/cone cavitators) or by measuring the
+$\alpha_{\text{vapour}} = 0.5$ isosurface directly from the converged
+$\sigma = 0.05$ CFD solution, per the Validation Plan (Chapter 7).
