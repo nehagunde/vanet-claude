@@ -1,11 +1,8 @@
-# VANET Project — Spec & Decisions
+# VANET Project — Spec & Implementation Record
 
 **Purpose of this file:** Single source of truth for the project's goal,
-locked decisions, architecture, and phase plan. Update this file when a
-decision changes; treat it as the contract.
-
-**Working rule:** Work strictly phase by phase. Pause after each phase for the
-user to say "go" before starting the next. No batch-dumping multi-phase code.
+decisions, architecture, and what was actually implemented. Reflects the
+final implemented state of the project as of September 2026.
 
 ---
 
@@ -13,174 +10,381 @@ user to say "go" before starting the next. No batch-dumping multi-phase code.
 
 Build a working VANET prototype that:
 
-1. Pulls real-time traffic data for a Visakhapatnam corridor via Google Maps APIs.
-2. Picks 10 vehicles moving on roads in that corridor.
-3. Simulates V2V (OBU↔OBU) and V2I (OBU↔RSU) communication, with RSUs every 1 km.
-4. Detects traffic jams and emits alerts of the form:
-   `"Traffic jam at <XYZ area>, take U-turn at <ABC area>"`
-5. Sends those alerts from stuck vehicles and RSUs to upstream vehicles, which
-   then take a U-turn before reaching the jam.
-6. Visually distinguishes vehicles that are stuck, moving, or rerouting.
+1. Pulls real-time traffic data for the NH-16 Gajuwaka → NAD Junction corridor
+   in Visakhapatnam via Google Maps Directions API (live mode), or replays a
+   recorded fixture (mock mode).
+2. Places 10 OBU vehicles across 6 corridor segments, distributed by congestion ratio.
+3. Simulates V2I (OBU↔RSU) and RSU-to-RSU relay communication using IEEE 802.11p WAVE.
+4. Detects traffic jams using a dual-condition rule (speed + vehicle count + duration).
+5. Fires a proactive early warning alert via multi-hop RSU relay so approaching
+   vehicles receive the alert ~1 km before the jam — early enough to divert.
+6. Alert message: `"Take alternate route at <diversion RSU area>, jam detected at <jam RSU area>"`
+7. Reroutes approaching vehicles via TraCI (Dijkstra shortest-path, avoiding jammed edges).
+8. Produces animated HTML GUI and results dashboard showing the full relay chain.
 
-Deliverable context: this is an **academic presentation project**. Optimize for
-clarity, clean comments, and a watchable demo over cleverness.
-
----
-
-## 2. Locked decisions (do not relitigate without asking)
-
-| # | Decision | Value |
-|---|----------|-------|
-| Corridor | NH-16 Gajuwaka → Sheelanagar → NAD Junction (~8 km, congestion-prone, multiple realistic U-turn cuts) |
-| Host vs target | Files authored on Windows at `C:\Users\NEHAGUNDE\Desktop\vanet_claude\`. Mounted into Kali at `/home/kali/vanet_claude/` via VMware shared folder (`open-vm-tools` + `vmhgfs-fuse`, single-share custom mount). SUMO + NS-3 run inside Kali. Claude Code runs from Windows; user pastes Kali run output back into chat when needed. |
-| SUMO version | Eclipse SUMO 1.25.0 (already installed) |
-| NS-3 version | ns-3-dev (already installed) — Python bindings partially deprecated, so use C++ for the WAVE app |
-| SUMO ↔ NS-3 coupling | Pure TraCI bridge. Python supervisor talks to SUMO via the `traci` library; NS-3 runs as a separate process and consumes mobility snapshots written by the supervisor. No Veins, no native NS-3 TraCI client. |
-| Demo mode | SUMO-GUI on (color-coded vehicles). Headless flag also supported. |
-| Maps refresh | 30–60 s polling. Default `MAPS_REFRESH_SEC=45`. A `--mock` mode replays a recorded JSON for offline demos. |
-| Language split | C++ for the NS-3 scenario + WAVE/802.11p app. Python for everything else (data node, TraCI supervisor, jam detector, output processing). |
-| Sim duration | 600 s simulated time (10 min). Configurable via launcher flag. |
-| Vehicle cohort | Fixed 10 vehicles for the whole sim. No rolling spawn. Configurable via launcher flag. |
-| API key handling | `.env` at project root, gitignored. `.env.example` committed with placeholders. User pastes real key into `.env` by hand inside the VM — never into Claude Code chat. |
+Deliverable context: **academic MTech dissertation project** — optimise for
+clarity, clean comments, and a watchable demo.
 
 ---
 
-## 3. Jam detection rule (fixed spec)
+## 2. Locked Decisions (Implemented)
 
-A vehicle is "stuck" if **either**:
+| # | Decision | Implemented Value |
+|---|---|---|
+| Title | Dual-Mode VANET System for Real-Time Jam Detection and Early Rerouting Advisory Using V2I and RSU Relay | Final title |
+| Corridor | NH-16 Old Gajuwaka → NAD Junction, Visakhapatnam (~6.48 km) | 7 RSUs placed |
+| RSU count | 7 RSUs (rsu_00 to rsu_06) | From `rsu_positions.csv` |
+| OBU count | 10 vehicles (fixed cohort) | `N_VEHICLES = 10` in `generate_routes.py` |
+| Simulation duration | 600 s (10 minutes) | `SIM_DURATION_S = 600` |
+| Time step | 1 s | `vanet.sumocfg`, `traci_supervisor.py` |
+| SUMO version | Eclipse SUMO 1.25.0 | Kali VM |
+| NS-3 version | ns-3-dev | Kali VM |
+| SUMO ↔ NS-3 coupling | Sequential (decoupled). SUMO runs first via TraCI → writes `mobility.ns2` → NS-3 reads it. Not real-time bidirectional. | `traci_supervisor.py` |
+| Host vs target | Files on Windows `C:\Users\NEHAGUNDE\Desktop\vanet_claude\`. SUMO + NS-3 run on Kali Linux VM at `/home/kali/vanet_claude/`. | Shared folder via VMware |
+| Language split | C++ for NS-3 WAVE app. Python for everything else. | Implemented |
+| Demo mode | Two modes: `--mock` (always jams BHPV) and live (Google Maps real-time). | `run_mock.sh`, `run_live.sh` |
+| API key | `.env` at project root, gitignored. Read via `python-dotenv`. | `.env`, `.env.example` |
+| Maps refresh | `MAPS_REFRESH_SEC=45` default. `--loop` flag for continuous polling. | `fetch_traffic.py` |
+| Alert message | "Take alternate route at {diversion point}, jam detected at {jam RSU area}" | `gui_visualiser.py` |
+| Rerouting algorithm | Dijkstra via TraCI `rerouteTraveltime` | `rerouter.py` |
+| Base paper | Sommer, German & Dressler — "Bidirectionally Coupled Network and Road Traffic Simulation for Improved IVC Analysis", IEEE TMC, vol. 10, no. 1, 2011 | Extension: added jam detection + RSU relay + rerouting application |
 
-- Its average speed over the last N seconds is < 5 km/h for > 30 s, **or**
-- Google Maps reports the segment as `duration_in_traffic / duration > 1.5`.
+---
 
-A **JAM** is declared on a segment when **≥ 3 of the 10 vehicles** meet the
-stuck condition on that same segment. Only then do RSUs broadcast the
-U-turn alert to upstream vehicles.
+## 3. Jam Detection Rule (Implemented)
 
-Alert payload format (V2V from stuck vehicles, V2I rebroadcast by RSUs):
+### Dual-Layer Detection
+
+**Layer 1 — NS-3 (online, during 802.11p simulation):**
 
 ```
-JAM_DETECTED  { vehicle_id, segment_id, lat, lon, severity, timestamp }
-JAM_ALERT     { jam_segment_id, jam_location_name, uturn_location_name,
-                uturn_lat, uturn_lon, ttl, timestamp }
+BEACON_INTERVAL   = 1.0 s       — OBU broadcasts every second
+JAM_SPEED         = 5.0 km/h    — OBU sends JAM_DETECTED if speed < 5 km/h
+JAM_VEH_THRESHOLD = 3           — RSU fires JAM_ALERT when >= 3 vehicles report slow
+JAM_TIME_WINDOW   = 30.0 s      — all 3 reports must arrive within 30 seconds
 ```
 
-Human-readable rendering: `"Traffic jam at <XYZ area>, take U-turn at <ABC area>"`.
+RSU resets counter after firing JAM_ALERT to prevent repeated spamming.
+
+**Layer 2 — Python offline (post-simulation, `jam_detector.py`):**
+
+```
+JAM_SPEED_KMH    = 5.0    km/h
+JAM_MIN_VEHICLES = 3      vehicles on the SAME road edge
+JAM_MIN_SECONDS  = 30     consecutive seconds each vehicle below threshold
+```
+
+**Live mode injection condition (`traci_supervisor.py`, `rerouter.py`):**
+- Jam injected only if Google Maps congestion level is `"slow"` or `"heavy"`
+- `"free"`, `"light"`, `"moderate"` → no jam injection → no alert sent
+- This ensures live mode output matches real-world traffic at time of running
+
+**Mock mode injection:**
+- Always injects jam at BHPV–Nathayyapalem zone (hardcoded bounding box)
+- `JAM_Y_MIN=3700, JAM_Y_MAX=4800, JAM_X_MIN=3000, JAM_X_MAX=4200` (SUMO metres)
+- Jam starts at `t=60 s`, ends at `t=350 s`, speed capped to `1.2 m/s (~4.3 km/h)`
+- After jam end: speed restored to `13.89 m/s (~50 km/h)`
+
+**Google Maps congestion levels (`fetch_traffic.py`):**
+```
+ratio = duration_in_traffic / duration_free_flow
+free      ratio < 1.10
+light     1.10 – 1.30
+moderate  1.30 – 1.60
+heavy     1.60 – 2.00
+jam       ratio >= 2.00
+```
 
 ---
 
-## 4. Architecture — two decoupled nodes
+## 4. Multi-Hop RSU Relay Architecture (Key Contribution)
 
-### Node 1 — Real-Time Data Node (Python)
-- Reads `GOOGLE_MAPS_API_KEY` from `.env`.
-- Calls Directions API + Roads API + Distance Matrix API for the corridor.
-- Generates the SUMO network from real OSM data (osmWebWizard or netconvert).
-- Generates 10 vehicles' routes (`.rou.xml`) seeded from current traffic.
-- Writes a refreshing `traffic_state.json` with per-segment congestion.
+The alert does not go directly from jam vehicles to approaching vehicles —
+they are ~1 km apart, beyond the 300 m 802.11p radio range. Instead:
 
-### Node 2 — Simulation Node (SUMO + NS-3)
-- SUMO runs the microsimulation using files from Node 1.
-- NS-3 runs the network simulation; mobility is fed from SUMO via the TraCI
-  bridge.
-- 10 OBU nodes (mobile, 802.11p/WAVE) + N RSUs (static, 802.11p/WAVE) every 1 km.
-- WAVE app handles `JAM_DETECTED` and `JAM_ALERT`.
-- On `JAM_ALERT` receipt, the OBU calls TraCI to reroute / U-turn at the
-  recommended junction.
+```
+Hop 1: Jam vehicles (veh_02, veh_03, veh_04)
+           ──V2I──►  rsu_02 (BHPV Junction, jam RSU)
+
+Hop 2: rsu_02
+           ──RSU-to-RSU──►  rsu_01 (New Gajuwaka, alert RSU)
+
+Hop 3: rsu_01
+           ──I2V──►  approaching vehicles (veh_00, veh_01)
+```
+
+**Alert fires at rsu_01 (New Gajuwaka), ~1 km before the jam at rsu_02 (BHPV).**
+This gives approaching vehicles enough road distance to take the diversion.
+
+**Alert message:**
+```
+"Take alternate route at New Gajuwaka, jam detected at BHPV Junction"
+```
+
+**alertRsuNode selection logic (`gui_visualiser.py`):**
+```python
+jamRsuIdx    = corridor.index(jamRsuNode)
+alertRsuNode = corridor[jamRsuIdx - 1]   # one RSU behind jam RSU
+```
 
 ---
 
-## 5. Project directory layout (agreed)
+## 5. System Architecture (Implemented)
+
+### Pipeline Phases
+
+```
+Phase 1  : Build corridor road network from OSM → corridor.net.xml
+Phase 2a : Google Maps API (live) or mock fixture → corridor/traffic_state.json
+Phase 2b : Generate SUMO vehicle routes → sim/sumo/routes.rou.xml
+Phase 3a : SUMO via TraCI → mobility.ns2, rsu_static.json, speed_log.json
+Phase 3b : NS-3 802.11p WAVE simulation → output/alerts.log
+Phase 4a : Offline jam detector → output/jam_report.json
+Phase 4b : TraCI rerouter (2nd SUMO run) → output/reroute_log.json
+Phase 5  : Visualiser + GUI → output/vanet_summary_*.html, vanet_gui_*.html
+```
+
+### Node Architecture
+
+**Data Node (Python):**
+- `scripts/fetch_traffic.py` — Google Maps API or mock fixture → `traffic_state.json`
+- `data_node/generate_routes.py` — route generation weighted by congestion ratio
+- `data_node/jam_detector.py` — offline jam detection from `speed_log.json`
+- `data_node/rerouter.py` — second SUMO run with live rerouting via TraCI
+
+**Simulation Node (SUMO + NS-3):**
+- `sim/sumo/vanet.sumocfg` — SUMO configuration
+- `sim/bridge/traci_supervisor.py` — TraCI bridge; produces mobility.ns2
+- `sim/ns3/vanet-scenario.cc` — NS-3 main: 10 OBU + 7 RSU nodes, 802.11p
+- `sim/ns3/jam-alert-app.cc/.h` — BEACON / JAM_DETECTED / JAM_ALERT application
+
+**NS-3 Node IDs:**
+```
+Nodes  0–9  : OBU (mobile vehicles)
+Nodes 10–16 : RSU (fixed roadside units)
+```
+
+---
+
+## 6. Project Directory Layout (Actual)
 
 ```
 vanet_claude/
-├── BRIEF.md                      # this file
-├── README.md                     # written in Phase 5
-├── .env                          # gitignored — user creates in Kali
-├── .env.example                  # committed
+├── BRIEF.md                          # this file — project spec + implementation record
+├── PAPER_DETAILS.md                  # detailed technical values for paper writing
+├── .env                              # gitignored — Google Maps API key
+├── .env.example                      # committed placeholder
 ├── .gitignore
 ├── requirements.txt
 ├── corridor/
-│   ├── corridor.geojson
-│   ├── corridor.osm
-│   ├── corridor.net.xml
-│   └── rsu_positions.csv         # lat,lon,id every 1 km
-├── data_node/                    # Node 1 — Python
-│   ├── fetch_traffic.py
-│   ├── generate_routes.py
-│   ├── traffic_state.json
-│   └── mock/                     # recorded responses for --mock mode
-├── sim/                          # Node 2 — SUMO + NS-3
+│   ├── corridor.osm                  # OpenStreetMap data for NH-16
+│   ├── corridor.net.xml              # SUMO road network (from netconvert)
+│   ├── rsu_positions.csv             # 7 RSUs: id, area, lat, lon, x_m, y_m
+│   ├── rsu_pois.add.xml              # RSU POI markers for SUMO-GUI
+│   ├── rsu_map.html                  # RSU placement visualisation
+│   ├── sumo_view.xml                 # SUMO-GUI view settings
+│   └── traffic_state.json            # live traffic state (refreshed each run)
+├── data_node/
+│   ├── generate_routes.py            # Phase 2b — vehicle route generator
+│   ├── jam_detector.py               # Phase 4a — offline jam detector
+│   ├── rerouter.py                   # Phase 4b — live TraCI rerouter
+│   └── mock/
+│       └── traffic_state.mock.json   # fixed fixture: BHPV jam, peak-hour scenario
+├── sim/
 │   ├── sumo/
-│   │   ├── vanet.sumocfg
-│   │   └── routes.rou.xml
+│   │   ├── vanet.sumocfg             # SUMO config (600 s, 1 s steps)
+│   │   └── routes.rou.xml            # 10 OBU vehicle trips (generated)
 │   ├── ns3/
-│   │   ├── vanet-scenario.cc
-│   │   ├── jam-alert-app.cc
-│   │   └── jam-alert-app.h
+│   │   ├── vanet-scenario.cc         # NS-3 main: 802.11p topology
+│   │   ├── jam-alert-app.cc          # WAVE application implementation
+│   │   └── jam-alert-app.h           # WAVE application header + constants
 │   └── bridge/
-│       ├── traci_supervisor.py   # SUMO ↔ NS-3 mobility + reroute bridge
-│       └── jam_detector.py
-├── output/
-│   ├── results.csv               # per-vehicle final status
-│   ├── alerts.log
-│   └── screenshots/
+│       ├── traci_supervisor.py       # Phase 3a — SUMO TraCI bridge
+│       ├── mobility.ns2              # OBU waypoint trace (generated)
+│       ├── rsu_static.json           # 7 RSU positions for NS-3 (generated)
+│       └── speed_log.json            # per-vehicle speed each second (generated)
 ├── scripts/
-│   ├── install_kali.sh           # apt + pip one-shot
-│   └── run_demo.sh               # end-to-end launcher with flags
+│   ├── fetch_traffic.py              # Phase 2a — Google Maps / mock fetcher
+│   ├── run_mock.sh                   # full mock pipeline launcher
+│   ├── run_live.sh                   # full live pipeline launcher
+│   ├── gui_visualiser.py             # Phase 5 — animated HTML GUI
+│   ├── visualise.py                  # Phase 5 — results dashboard
+│   ├── build_corridor.sh             # Phase 1 — OSM → SUMO network
+│   ├── install_kali.sh               # apt + pip one-shot installer
+│   ├── place_rsus.py                 # Phase 1 — RSU placement along corridor
+│   └── calc_rsu_distances.py         # RSU inter-distance calculator
+├── output/
+│   ├── alerts.log                    # NS-3 + detector + rerouter events (appended)
+│   ├── jam_report.json               # detected jam events with timing & location
+│   ├── reroute_log.json              # rerouting decisions per vehicle
+│   ├── results.xml                   # SUMO per-vehicle trip info
+│   ├── vanet_summary_mock.html       # mock mode results dashboard
+│   ├── vanet_gui_mock.html           # mock mode animated GUI
+│   ├── vanet_summary_live.html       # live mode results dashboard
+│   ├── vanet_gui_live.html           # live mode animated GUI
+│   └── screenshots/                  # speed chart PNGs
 └── docs/
-    ├── architecture.md
-    └── corridor_choice.md
+    ├── corridor_choice.md
+    └── phase3_bridge_explanation.md
 ```
 
 ---
 
-## 6. Phases (work strictly in this order, pause between each)
+## 7. SUMO Parameters (Implemented)
 
-- **Phase 0 — Setup & verification.** Confirm SUMO 1.25.0, ns-3-dev, Python 3,
-  required Python libs. Generate `install_kali.sh` for anything missing.
-  Create the directory tree, `.env.example`, `.gitignore`, `requirements.txt`.
-  No simulation code.
-- **Phase 1 — Map data.** Download OSM for the NH-16 corridor bbox, run
-  `netconvert` to produce `corridor.net.xml`, place RSUs every 1 km along the
-  main road, write `rsu_positions.csv`, write `docs/corridor_choice.md`.
-- **Phase 2 — Real-Time Data Node.** `fetch_traffic.py`, `generate_routes.py`,
-  produce `routes.rou.xml` and refreshing `traffic_state.json`. Implement
-  `--mock` mode using recorded fixtures.
-- **Phase 3 — SUMO + NS-3 coupling.** `vanet.sumocfg`, `vanet-scenario.cc`,
-  `jam-alert-app.{cc,h}` with 802.11p/WAVE, `traci_supervisor.py` bridge.
-  Mobility flowing one way, reroute commands flowing back.
-- **Phase 4 — Alert logic & U-turn rerouting.** Implement the jam detection
-  rule from §3. On `JAM_ALERT`, OBU reroutes via TraCI at the recommended
-  junction.
-- **Phase 5 — Output & visualization.** SUMO-GUI color coding (red=stuck,
-  green=moving, yellow=alerted/rerouting), `results.csv` per vehicle,
-  `alerts.log`, end-to-end `README.md` with run instructions.
+| Parameter | Value |
+|---|---|
+| Duration | 600 s |
+| Step length | 1 s |
+| Vehicles | 10 OBUs |
+| Depart spread | 120 s (staggered over first 2 minutes) |
+| Free-flow speed | 50 km/h (13.89 m/s) |
+| Vehicle type | passenger car, accel=2.6 m/s², decel=4.5 m/s², sigma=0.5, length=4.5 m, minGap=2.5 m |
+| Jam speed cap | 1.2 m/s (~4.3 km/h) |
+| Jam active | t=60 s to t=350 s (290 s duration) |
+| Teleport timeout | 300 s |
+| TraCI port (supervisor) | 8813 |
+| TraCI port (rerouter) | 8814 |
+| Reroute cost | 9999 s travel time on jammed edges |
+| Reroute cooldown | 60 s per vehicle |
 
 ---
 
-## 7. Hard rules
+## 8. NS-3 / 802.11p Parameters (Implemented)
 
-- **Phase gate.** End every phase with "Phase N complete — ready for Phase N+1?"
-  and stop. Do not start the next phase until the user says "go".
-- **No API key in chat.** Never ask the user to paste the Google Maps key
-  into the conversation. The code reads it from `.env`.
-- **Relative paths only** in code.
-- **Comment for clarity** — this is a presentation project. Explain the *why*
-  of non-obvious logic (jam threshold, TraCI bridging, WAVE app structure).
-  Skip narration of obvious code.
-- **Minimal dependencies**, prefer apt-installable on Kali.
-- **Kali is the runtime.** All scripts target Linux (forward slashes, bash).
+| Parameter | Value |
+|---|---|
+| Standard | IEEE 802.11p (WIFI_STANDARD_80211p) |
+| Frequency | 5.9 GHz |
+| Channel width | 10 MHz |
+| Data rate | 6 Mb/s (OfdmRate6MbpsBW10MHz) |
+| Tx power | 20 dBm |
+| Effective range | ~300 m (Friis free-space model) |
+| Propagation loss | FriisPropagationLossModel |
+| Propagation delay | ConstantSpeedPropagationDelayModel |
+| MAC | AdhocWifiMac (no association handshake) |
+| Transport | UDP broadcast, 255.255.255.255, port 7777 |
+| Beacon interval | 1.0 s |
+| OBU nodes | 10 (NS-3 IDs 0–9), mobile (ns2 waypoint trace) |
+| RSU nodes | 7 (NS-3 IDs 10–16), fixed (ConstantPositionMobilityModel) |
+| RSU antenna height | 1.5 m |
+| Simulation time | 600 s |
 
 ---
 
-## 8. Where to start
+## 9. RSU Positions (Implemented)
 
-On "go", begin **Phase 0** only:
+| RSU ID | Area | Lat | Lon | X (m) | Y (m) | Dist to next |
+|---|---|---|---|---|---|---|
+| rsu_00 | Old Gajuwaka | 17.685048 | 83.203902 | 3320.99 | 1846.97 | 0.9815 km |
+| rsu_01 | New Gajuwaka | 17.693737 | 83.205536 | 3483.10 | 2810.81 | 0.9749 km |
+| rsu_02 | BHPV Junction | 17.702503 | 83.205661 | 3484.99 | 3781.42 | 0.9137 km |
+| rsu_03 | Nathayyapalem | 17.710709 | 83.205199 | 3425.37 | 4689.20 | 0.9123 km |
+| rsu_04 | Sheelanagar | 17.718771 | 83.203601 | 3245.36 | 5579.66 | 0.6003 km |
+| rsu_05 | Gopalapatnam | 17.723778 | 83.205720 | 3463.72 | 6136.56 | 2.0786 km |
+| rsu_06 | NAD Junction | 17.732260 | 83.223209 | 5307.99 | 7097.46 | — |
 
-1. Verify tool versions in the VM (`sumo --version`, `ns3 --version`,
-   `python3 --version`).
-2. List Python libs needed (`googlemaps`, `python-dotenv`, `traci`, `sumolib`,
-   `requests`, etc.) and produce `requirements.txt`.
-3. Generate `scripts/install_kali.sh` covering anything missing.
-4. Create the directory tree from §5, plus `.env.example`, `.gitignore`,
-   empty placeholder files where useful.
-5. Stop. Ask the user to confirm Phase 0 before starting Phase 1.
+**Total corridor: ~6.48 km**
+
+---
+
+## 10. Message Types (Implemented)
+
+| Type | Code | Sender | Trigger |
+|---|---|---|---|
+| BEACON | 0 | OBU | Every 1 s (always) |
+| JAM_DETECTED | 1 | OBU | Speed < 5 km/h (NS-3 side; placeholder in current build — speed=-1) |
+| JAM_ALERT | 2 | RSU | >= 3 JAM_DETECTED in 30 s window |
+
+**Wire format (VanetMsg, 113 bytes, packed):**
+```
+uint8_t  msg_type       (1 byte)
+uint32_t sender_id      (4 bytes)
+float    speed_kmh      (4 bytes)
+float    pos_x          (4 bytes)
+float    pos_y          (4 bytes)
+char     edge[32]       (32 bytes)
+char     alert_msg[64]  (64 bytes)
+```
+
+---
+
+## 11. Output Files (Implemented)
+
+| File | Written by | Purpose |
+|---|---|---|
+| `corridor/traffic_state.json` | `fetch_traffic.py` | Per-segment congestion from Google Maps or mock |
+| `sim/sumo/routes.rou.xml` | `generate_routes.py` | 10 vehicle trips |
+| `sim/bridge/mobility.ns2` | `traci_supervisor.py` | OBU waypoints for NS-3 |
+| `sim/bridge/rsu_static.json` | `traci_supervisor.py` | 7 RSU XY positions for NS-3 |
+| `sim/bridge/speed_log.json` | `traci_supervisor.py` | Per-vehicle speed + edge each second |
+| `output/alerts.log` | NS-3 + jam_detector + rerouter | All VANET events timestamped |
+| `output/jam_report.json` | `jam_detector.py` | Detected jam events |
+| `output/reroute_log.json` | `rerouter.py` | Rerouting decisions |
+| `output/results.xml` | SUMO | Per-vehicle trip stats |
+| `output/vanet_summary_*.html` | `visualise.py` | Results dashboard |
+| `output/vanet_gui_*.html` | `gui_visualiser.py` | Animated GUI |
+
+---
+
+## 12. Run Commands
+
+### Mock Mode (offline demo, no API key needed)
+```bash
+cd /home/kali/vanet_claude
+bash scripts/run_mock.sh
+```
+Opens: `output/vanet_gui_mock.html` and `output/vanet_summary_mock.html`
+
+### Live Mode (real-time Google Maps data)
+```bash
+cd /home/kali/vanet_claude
+bash scripts/run_live.sh
+```
+Opens: `output/vanet_gui_live.html` and `output/vanet_summary_live.html`
+
+### Individual Phase Commands
+```bash
+# Phase 2a — fetch traffic
+python3 scripts/fetch_traffic.py --mock        # mock
+python3 scripts/fetch_traffic.py               # live
+
+# Phase 2b — generate routes
+python3 data_node/generate_routes.py --mock
+python3 data_node/generate_routes.py
+
+# Phase 3a — SUMO via TraCI
+python3 sim/bridge/traci_supervisor.py --mock
+python3 sim/bridge/traci_supervisor.py
+
+# Phase 3b — NS-3
+cd /home/kali/ns-3-dev
+./ns3 run "vanet-scenario \
+  --mobilityFile=/home/kali/vanet_claude/sim/bridge/mobility.ns2 \
+  --rsuFile=/home/kali/vanet_claude/sim/bridge/rsu_static.json \
+  --logFile=/home/kali/vanet_claude/output/alerts.log"
+cd /home/kali/vanet_claude
+
+# Phase 4b — rerouter
+python3 data_node/rerouter.py --mock
+python3 data_node/rerouter.py
+
+# Phase 4a — jam detector
+python3 data_node/jam_detector.py
+
+# Phase 5 — visualise
+python3 scripts/visualise.py --mode mock
+python3 scripts/gui_visualiser.py --mode mock
+```
+
+---
+
+## 13. Known Limitations
+
+1. SUMO–NS-3 coupling is sequential (not real-time bidirectional) — NS-3 cannot feed back into the same SUMO run.
+2. NS-3 speed values in beacons are placeholder (`-1.0`) — real detection relies on Python-side `speed_log.json`.
+3. Friis propagation overestimates range in urban environments with buildings and multipath.
+4. Full WAVE stack (IEEE 1609.3/1609.4 multi-channel) not implemented — plain UDP used.
+5. 10 vehicles only — high-density channel saturation not modelled.
+6. Single direction (south to north) on one corridor only.
+7. rsu_05 → rsu_06 gap is 2.08 km — beyond single-hop 300 m range; no RSU relay covers this segment.
