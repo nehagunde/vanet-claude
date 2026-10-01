@@ -511,10 +511,11 @@ def print_summary(data: dict, seeds: list[int]) -> None:
                 re_ = data[scenario][seed]["reroute"]
                 pdr = (al["jam_alert_recv_count"] / al["jam_alert_sent_count"]
                        if al["jam_alert_sent_count"] > 0 else float("nan"))
+                pdr_str = f"{pdr:.2f}" if not np.isnan(pdr) else "n/a"
                 print(f"    seed={seed}: detect_delay={al['detection_delay_s']}s  "
                       f"relay_delay={al['relay_delay_s']}s  "
                       f"sent={al['jam_alert_sent_count']} recv={al['jam_alert_recv_count']} "
-                      f"PDR={pdr:.2f if not np.isnan(pdr) else 'n/a'}  "
+                      f"PDR={pdr_str}  "
                       f"rerouted={re_['total_rerouted']} avoided={re_['avoided_jam']}")
 
     print()

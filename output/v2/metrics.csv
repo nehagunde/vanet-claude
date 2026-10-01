@@ -1,0 +1,16 @@
+scenario,seed,mean_duration_s,mean_waiting_s,vehicle_count,detection_delay_s,relay_delay_s,jam_alert_sent,jam_alert_recv,pdr,vehicles_rerouted,vehicles_avoided_jam,false_alerts
+NO_JAM,1,378.40,5.60,10,,,0,0,,0,0,0
+NO_JAM,2,nan,nan,0,,,0,0,,0,0,0
+NO_JAM,3,nan,nan,0,,,0,0,,0,0,0
+NO_JAM,4,nan,nan,0,,,0,0,,0,0,0
+NO_JAM,5,nan,nan,0,,,0,0,,0,0,0
+JAM_NO_ALERT,1,nan,nan,0,,,0,0,,0,0,0
+JAM_NO_ALERT,2,nan,nan,0,,,0,0,,0,0,0
+JAM_NO_ALERT,3,nan,nan,0,,,0,0,,0,0,0
+JAM_NO_ALERT,4,nan,nan,0,,,0,0,,0,0,0
+JAM_NO_ALERT,5,nan,nan,0,,,0,0,,0,0,0
+JAM_WITH_ALERT,1,nan,nan,0,,,0,0,,0,0,0
+JAM_WITH_ALERT,2,nan,nan,0,,,0,0,,0,0,0
+JAM_WITH_ALERT,3,nan,nan,0,,,0,0,,0,0,0
+JAM_WITH_ALERT,4,nan,nan,0,,,0,0,,0,0,0
+JAM_WITH_ALERT,5,nan,nan,0,,,0,0,,0,0,0
