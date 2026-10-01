@@ -146,8 +146,10 @@ def make_html(rsus: list[dict], jam_report: list, reroute_log: dict,
     # ── Stats ─────────────────────────────────────────────────────────────────
     n_vehicles = 0
     if speed_log:
-        first_step = next(iter(speed_log.values()))
-        n_vehicles = len(first_step)
+        all_vehs = set()
+        for step in speed_log.values():
+            all_vehs.update(step.keys())
+        n_vehicles = len(all_vehs)
 
     n_jams     = len(jam_report)
     n_rerouted = reroute_log.get("summary", {}).get("total_vehicles_rerouted", 0)
@@ -459,7 +461,7 @@ def make_html(rsus: list[dict], jam_report: list, reroute_log: dict,
 
   <!-- Rerouting Events -->
   <div class="card">
-    <h2>🔀 U-Turn Rerouting Events
+    <h2>🔀 Rerouting Events
       <span class="badge badge-ok">{n_rerouted} vehicles diverted</span>
     </h2>
     <table>

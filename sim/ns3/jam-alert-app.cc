@@ -61,11 +61,13 @@ JamAlertApp::~JamAlertApp() = default;
 // ── Public setup ──────────────────────────────────────────────────────────────
 
 void JamAlertApp::Setup(uint32_t nodeId, bool isRsu,
-                        const std::string& logPath, uint16_t port) {
-    m_nodeId  = nodeId;
-    m_isRsu   = isRsu;
-    m_logPath = logPath;
-    m_port    = port;
+                        const std::string& logPath, uint16_t port,
+                        const std::string& alertMsg) {
+    m_nodeId   = nodeId;
+    m_isRsu    = isRsu;
+    m_logPath  = logPath;
+    m_port     = port;
+    m_alertMsg = alertMsg;
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -222,8 +224,10 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
             }
 
             if (m_slowCount >= JAM_VEH_THRESHOLD) {
-                SendAlert(JAM_ALERT,
-                    "Traffic jam detected — take U-turn at nearest junction");
+                std::string msg = m_alertMsg.empty()
+                    ? "Take alternate route: jam detected ahead"
+                    : m_alertMsg;
+                SendAlert(JAM_ALERT, msg);
                 // Reset so we don't spam
                 m_slowCount   = 0;
                 m_firstSlowAt = 0.0;

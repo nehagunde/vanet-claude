@@ -87,10 +87,11 @@ private:
     void LogEvent(const std::string& line);
 
     // State
-    uint32_t    m_nodeId  {0};
-    bool        m_isRsu   {false};
-    uint16_t    m_port    {7777};
+    uint32_t    m_nodeId   {0};
+    bool        m_isRsu    {false};
+    uint16_t    m_port     {7777};
     std::string m_logPath;
+    std::string m_alertMsg;
 
     Ptr<Socket>  m_rxSocket;         // bound receive socket
     Ptr<Socket>  m_txSocket;         // send socket

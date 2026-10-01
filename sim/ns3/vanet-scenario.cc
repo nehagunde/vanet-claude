@@ -55,6 +55,7 @@
 struct RsuEntry {
     uint32_t    ns3NodeId;
     std::string rsuId;
+    std::string area;
     double      x;
     double      y;
 };
@@ -102,6 +103,7 @@ static std::vector<RsuEntry> LoadRsuJson(const std::string& path) {
         RsuEntry e;
         e.ns3NodeId = extractUint("ns3_node_id");
         e.rsuId     = extractStr("rsu_id");
+        e.area      = extractStr("area");
         e.x         = extract("x_m");
         e.y         = extract("y_m");
         result.push_back(e);
@@ -239,9 +241,18 @@ int main(int argc, char* argv[]) {
     }
 
     // RSUs: nodes 10–16
+    // Each RSU alert says "Take alternate route at <prev RSU area>, jam detected at <this RSU area>"
+    // RSU index 0 (Old Gajuwaka) has no predecessor; it uses a generic fallback.
     for (uint32_t i = 0; i < nRsu; ++i) {
+        std::string alertMsg;
+        if (i > 0) {
+            alertMsg = "Take alternate route at " + rsus[i - 1].area +
+                       ", jam detected at " + rsus[i].area;
+        } else {
+            alertMsg = "Take alternate route: jam detected ahead";
+        }
         Ptr<JamAlertApp> app = CreateObject<JamAlertApp>();
-        app->Setup(10 + i, /*isRsu=*/true, logFile, port);
+        app->Setup(10 + i, /*isRsu=*/true, logFile, port, alertMsg);
         rsuNodes.Get(i)->AddApplication(app);
         app->SetStartTime(Seconds(0.0));
         app->SetStopTime(Seconds(simTime));

@@ -179,15 +179,24 @@ def write_jam_report(jams: list[dict], rsus_xy: list[dict],
                      out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    areas   = load_rsu_areas()                      # {rsu_id: area_name}
+    rsu_ids = [r["id"] for r in rsus_xy]            # ordered by corridor
+
     report = []
     for jam in jams:
         rsu = nearest_rsu(jam["centroid_x"], jam["centroid_y"], rsus_xy)
+        jam_area = areas.get(rsu, rsu)
+        # Alert RSU = the RSU one step back (approaching side)
+        if rsu in rsu_ids and rsu_ids.index(rsu) > 0:
+            alert_rsu = rsu_ids[rsu_ids.index(rsu) - 1]
+        else:
+            alert_rsu = rsu
+        alert_area = areas.get(alert_rsu, alert_rsu)
+
         entry = dict(jam)
         entry["nearest_rsu"] = rsu
         entry["alert_message"] = (
-            f"Traffic jam on edge {jam['edge']} near {rsu} — "
-            f"avg {jam['avg_speed_kmh']} km/h for {jam['duration_s']} s — "
-            f"take U-turn at nearest junction"
+            f"Take alternate route at {alert_area}, jam detected at {jam_area}"
         )
         report.append(entry)
 
@@ -207,11 +216,17 @@ def append_alerts_log(jams: list[dict], rsus_xy: list[dict],
     if not jams:
         lines.append("# No jams detected matching the threshold criteria.")
     else:
+        areas   = load_rsu_areas()
+        rsu_ids = [r["id"] for r in rsus_xy]
         for jam in jams:
             rsu = nearest_rsu(jam["centroid_x"], jam["centroid_y"], rsus_xy)
-            msg = (f"Traffic jam on edge {jam['edge']} near {rsu} — "
-                   f"avg {jam['avg_speed_kmh']} km/h for {jam['duration_s']} s — "
-                   f"U-turn recommended")
+            jam_area = areas.get(rsu, rsu)
+            if rsu in rsu_ids and rsu_ids.index(rsu) > 0:
+                alert_rsu = rsu_ids[rsu_ids.index(rsu) - 1]
+            else:
+                alert_rsu = rsu
+            alert_area = areas.get(alert_rsu, alert_rsu)
+            msg = f"Take alternate route at {alert_area}, jam detected at {jam_area}"
             lines.append(
                 f"[T={jam['start_s']:.1f}] NODE=DETECTOR TYPE=JAM_ALERT "
                 f"EDGE={jam['edge']} RSU={rsu} "
