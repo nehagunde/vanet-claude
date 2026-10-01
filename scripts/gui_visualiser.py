@@ -15,14 +15,25 @@ import re
 import sys
 from pathlib import Path
 
-PROJECT_ROOT     = Path(__file__).resolve().parent.parent
-SPEED_LOG_JSON   = PROJECT_ROOT / "sim"    / "bridge" / "speed_log.json"
-RSU_STATIC_JSON  = PROJECT_ROOT / "sim"    / "bridge" / "rsu_static.json"
-JAM_REPORT_JSON  = PROJECT_ROOT / "output" / "jam_report.json"
-REROUTE_LOG_V2   = PROJECT_ROOT / "output" / "v2" / "reroute_log.json"
-REROUTE_LOG_LEGACY = PROJECT_ROOT / "output" / "reroute_log.json"
-ALERTS_LOG_V2    = PROJECT_ROOT / "output" / "v2" / "alerts.log"
-ALERTS_LOG_LEGACY = PROJECT_ROOT / "output" / "alerts.log"
+PROJECT_ROOT       = Path(__file__).resolve().parent.parent
+SPEED_LOG_JSON     = PROJECT_ROOT / "sim"      / "bridge" / "speed_log.json"
+RSU_STATIC_JSON    = PROJECT_ROOT / "sim"      / "bridge" / "rsu_static.json"
+JAM_REPORT_JSON    = PROJECT_ROOT / "output"   / "jam_report.json"
+REROUTE_LOG_V2     = PROJECT_ROOT / "output"   / "v2" / "reroute_log.json"
+REROUTE_LOG_LEGACY = PROJECT_ROOT / "output"   / "reroute_log.json"
+ALERTS_LOG_V2      = PROJECT_ROOT / "output"   / "v2" / "alerts.log"
+ALERTS_LOG_LEGACY  = PROJECT_ROOT / "output"   / "alerts.log"
+TRAFFIC_STATE_JSON = PROJECT_ROOT / "corridor" / "traffic_state.json"
+
+# Congestion level → road colour (live mode)
+CONGESTION_COLOURS = {
+    "free":     "#3fb950",   # green
+    "light":    "#7ee787",   # light green
+    "moderate": "#ffbe0b",   # amber
+    "heavy":    "#ff8c00",   # orange
+    "slow":     "#ff8c00",
+    "jam":      "#ff4444",   # red
+}
 
 
 def load_json(p, default):
@@ -118,6 +129,33 @@ def parse_alerts_log_gui(log_path: Path) -> dict:
     return events
 
 
+def build_segment_info(traffic_state: list, rsu_static: list) -> list:
+    """
+    Build per-segment congestion info for live road colouring.
+    Maps each traffic_state entry to the canvas indices of its from/to RSUs.
+    Returns list of {from_id, to_id, level, colour, speed_kmh, ratio, label}.
+    """
+    rsu_id_to_idx = {r["rsu_id"]: i for i, r in enumerate(rsu_static)}
+    segments = []
+    for seg in traffic_state:
+        fi = rsu_id_to_idx.get(seg.get("from_rsu", ""))
+        ti = rsu_id_to_idx.get(seg.get("to_rsu",   ""))
+        if fi is None or ti is None:
+            continue
+        level = seg.get("congestion_level", "free")
+        segments.append({
+            "fi":       fi,
+            "ti":       ti,
+            "level":    level,
+            "colour":   CONGESTION_COLOURS.get(level, "#00b4d8"),
+            "speed":    round(seg.get("speed_kmh", 50.0), 1),
+            "ratio":    round(seg.get("congestion_ratio", 1.0), 2),
+            "dist_km":  round(seg.get("distance_m", 0) / 1000, 2),
+            "label":    f"{seg.get('from_rsu','?')} → {seg.get('to_rsu','?')}",
+        })
+    return segments
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser()
@@ -131,6 +169,21 @@ def main() -> int:
     speed_log   = load_json(SPEED_LOG_JSON,  {})
     rsu_static  = load_json(RSU_STATIC_JSON, [])
     jam_report  = load_json(JAM_REPORT_JSON, [])
+
+    # Live mode: load real Google Maps congestion data
+    traffic_state = []
+    if mode == "live":
+        traffic_state = load_json(TRAFFIC_STATE_JSON, [])
+        if traffic_state:
+            print(f"  Loaded live traffic: {len(traffic_state)} segments from traffic_state.json")
+            for seg in traffic_state:
+                lvl = seg.get("congestion_level", "?")
+                spd = seg.get("speed_kmh", 0)
+                print(f"    {seg.get('from_rsu','?')} → {seg.get('to_rsu','?')}: {lvl} ({spd:.1f} km/h)")
+        else:
+            print("  [WARN] traffic_state.json not found — live road colours unavailable")
+            print("         Run: python3 scripts/fetch_traffic.py --live  first")
+    segment_info  = build_segment_info(traffic_state, rsu_static) if traffic_state else []
 
     # Use v2 reroute log if available, fall back to legacy
     reroute_log = load_json(REROUTE_LOG_V2, None)
@@ -206,11 +259,12 @@ def main() -> int:
     alert_msg_text = (ns3_events["relay_sent"] or {}).get(
         "msg", "Take alternate route — jam detected ahead")
 
-    frames_json    = json.dumps(frames,        separators=(",", ":"))
-    rsu_info_json  = json.dumps(rsu_info,      separators=(",", ":"))
-    jam_json       = json.dumps(jam_events_js, separators=(",", ":"))
-    reroute_json   = json.dumps(reroute_set,   separators=(",", ":"))
-    ns3_events_json = json.dumps(ns3_payload,  separators=(",", ":"))
+    frames_json      = json.dumps(frames,        separators=(",", ":"))
+    rsu_info_json    = json.dumps(rsu_info,      separators=(",", ":"))
+    jam_json         = json.dumps(jam_events_js, separators=(",", ":"))
+    reroute_json     = json.dumps(reroute_set,   separators=(",", ":"))
+    ns3_events_json  = json.dumps(ns3_payload,   separators=(",", ":"))
+    segment_info_json = json.dumps(segment_info, separators=(",", ":"))
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -413,10 +467,12 @@ canvas {{ width: 100%; height: 100%; }}
 
 <script>
 // ── Embedded data (generated by gui_visualiser.py) ────────────────────────────
-const FRAMES      = {frames_json};
-const RSU_INFO    = {rsu_info_json};
-const JAM_EVENTS  = {jam_json};
-const REROUTES    = {reroute_json};
+const FRAMES        = {frames_json};
+const RSU_INFO      = {rsu_info_json};
+const JAM_EVENTS    = {jam_json};
+const REROUTES      = {reroute_json};
+const SEGMENT_INFO  = {segment_info_json};   // live mode: Google Maps congestion per segment
+const SIM_MODE      = "{mode}";
 
 // NS-3 events from output/v2/alerts.log — NOT inferred from vehicle speeds
 const NS3_EVENTS  = {ns3_events_json};
