@@ -56,7 +56,7 @@ def resolve_jam_zone() -> tuple:
 
     # Only return a zone if there is a real jam
     level = jam_seg.get("congestion_level", "free")
-    if level not in ("slow", "heavy"):
+    if level not in ("heavy", "jam"):
         print(f"  ✓ No real jam in live data — best segment "
               f"{jam_seg['from_rsu']} → {jam_seg['to_rsu']} "
               f"is '{level}' (ratio={jam_seg.get('congestion_ratio', 0):.2f}). "

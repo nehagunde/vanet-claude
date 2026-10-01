@@ -68,7 +68,8 @@ public:
      * @param port       UDP port (default 7777)
      */
     void Setup(uint32_t nodeId, bool isRsu,
-               const std::string& logPath, uint16_t port = 7777);
+               const std::string& logPath, uint16_t port = 7777,
+               const std::string& alertMsg = "");
 
 private:
     // Application lifecycle

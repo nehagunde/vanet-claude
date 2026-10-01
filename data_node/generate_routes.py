@@ -125,7 +125,8 @@ def find_nearest_edge(net, lat: float, lon: float,
             (e, d) for e, d in neighbours
             if not e.getID().startswith(":")
             and e.getLaneNumber() > 0
-            and e.getSpeed() > 1.0   # > 1 m/s → excludes pedestrian edges
+            and e.getSpeed() > 1.0
+            and e.allows("passenger")   # must allow cars (excludes bus-only, footpath edges)
         ]
         if driveable:
             return min(driveable, key=lambda pair: pair[1])[0].getID()
