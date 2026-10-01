@@ -71,6 +71,12 @@ void JamAlertApp::Setup(uint32_t nodeId, bool isRsu,
     m_alertMsg = alertMsg;
 }
 
+void JamAlertApp::SetBackhaulPeer(Ipv4Address peerAddr, uint16_t bkPort) {
+    m_hasBkPeer  = true;
+    m_bkPeerAddr = peerAddr;
+    m_bkPort     = bkPort;
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 void JamAlertApp::StartApplication() {
@@ -98,12 +104,49 @@ void JamAlertApp::StartApplication() {
         m_beaconEvent = Simulator::Schedule(
             Seconds(0.0), &JamAlertApp::SendBeacon, this);
     }
+
+    // RSU backhaul sockets (wired PointToPoint relay, port 7778)
+    if (m_isRsu) {
+        // Always listen: a higher-indexed RSU may relay to us
+        m_bkRxSocket = Socket::CreateSocket(GetNode(), udpTid);
+        m_bkRxSocket->Bind(InetSocketAddress(Ipv4Address::GetAny(), m_bkPort));
+        m_bkRxSocket->SetRecvCallback(
+            MakeCallback(&JamAlertApp::HandleBackhaulRead, this));
+
+        // Send backhaul only if a peer was configured
+        if (m_hasBkPeer) {
+            m_bkTxSocket = Socket::CreateSocket(GetNode(), udpTid);
+            m_bkTxSocket->Connect(InetSocketAddress(m_bkPeerAddr, m_bkPort));
+            std::ostringstream info;
+            info << "[T=0.0] RSU=" << m_nodeId
+                 << " BACKHAUL_PEER=" << m_bkPeerAddr
+                 << " PORT=" << m_bkPort;
+            LogEvent(info.str());
+        }
+    }
 }
 
 void JamAlertApp::StopApplication() {
     Simulator::Cancel(m_beaconEvent);
-    if (m_rxSocket) { m_rxSocket->Close(); }
-    if (m_txSocket) { m_txSocket->Close(); }
+
+    // Log delivery-ratio summary for this node
+    std::ostringstream stats;
+    stats << "[T=" << std::fixed << std::setprecision(1)
+          << Simulator::Now().GetSeconds()
+          << "] NODE=" << m_nodeId
+          << " STATS"
+          << " SENT_BEACON="       << m_cntSent[0]
+          << " SENT_JAM_DETECTED=" << m_cntSent[1]
+          << " SENT_JAM_ALERT="    << m_cntSent[2]
+          << " RECV_BEACON="       << m_cntRecv[0]
+          << " RECV_JAM_DETECTED=" << m_cntRecv[1]
+          << " RECV_JAM_ALERT="    << m_cntRecv[2];
+    LogEvent(stats.str());
+
+    if (m_rxSocket)   { m_rxSocket->Close(); }
+    if (m_txSocket)   { m_txSocket->Close(); }
+    if (m_bkRxSocket) { m_bkRxSocket->Close(); }
+    if (m_bkTxSocket) { m_bkTxSocket->Close(); }
     if (m_log.is_open()) { m_log.close(); }
 }
 
