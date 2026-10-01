@@ -234,6 +234,10 @@ def main() -> int:
                     help="Force speed cap on BHPV–Nathayyapalem edges (auto-set with --mock)")
     ap.add_argument("--port", type=int, default=8813,
                     help="TraCI port (default: 8813)")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="SUMO random seed (default: 0)")
+    ap.add_argument("--tripinfo", type=str, default="",
+                    help="Path for SUMO tripinfo XML output (optional)")
     args = ap.parse_args()
 
     # ── Optional: regenerate routes with mock jam ─────────────────────────────
@@ -271,6 +275,10 @@ def main() -> int:
         "--no-step-log",
         "--collision.action", "warn",
     ]
+    if args.seed:
+        sumo_cmd += ["--seed", str(args.seed)]
+    if args.tripinfo:
+        sumo_cmd += ["--tripinfo-output", args.tripinfo]
     print(f"\nLaunching SUMO: {' '.join(sumo_cmd)}")
     traci.start(sumo_cmd, port=args.port)
 

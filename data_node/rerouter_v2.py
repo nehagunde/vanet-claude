@@ -130,18 +130,29 @@ def main() -> int:
     ap.add_argument("--gui",  action="store_true", help="Show SUMO-GUI")
     ap.add_argument("--port", type=int, default=8815,
                     help="TraCI port (default 8815; avoids clash with rerouter.py)")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="SUMO random seed (default: 0)")
+    ap.add_argument("--tripinfo", type=str, default="",
+                    help="Path for SUMO tripinfo XML output (optional)")
+    ap.add_argument("--alerts-log", type=str, default="",
+                    help="Override path to NS-3 alerts log (default: output/v2/alerts.log)")
+    ap.add_argument("--reroute-log", type=str, default="",
+                    help="Override path for reroute log JSON output")
     args = ap.parse_args()
 
+    alerts_log_path = Path(args.alerts_log) if args.alerts_log else ALERTS_LOG
+    reroute_log_path = Path(args.reroute_log) if args.reroute_log else REROUTE_LOG
+
     # ── Parse NS-3 alert ─────────────────────────────────────────────────────
-    if not ALERTS_LOG.exists():
+    if not alerts_log_path.exists():
         print(f"ERROR: {ALERTS_LOG} not found. Run NS-3 (Phase 3b) first.",
               file=sys.stderr)
         return 1
 
-    t_alert, alert_rsu, alert_msg, t_relay = parse_ns3_alert(ALERTS_LOG)
+    t_alert, alert_rsu, alert_msg, t_relay = parse_ns3_alert(alerts_log_path)
     if t_alert is None:
         print("ERROR: No JAM_DETECTED_FROM event found for RSU=12 in NS-3 alerts log.\n"
-              f"       Checked: {ALERTS_LOG}", file=sys.stderr)
+              f"       Checked: {alerts_log_path}", file=sys.stderr)
         return 1
 
     print(f"NS-3 first detection: T={t_alert:.1f}s  RSU={alert_rsu}"
@@ -173,6 +184,10 @@ def main() -> int:
         "--no-step-log",
         "--collision.action", "warn",
     ]
+    if args.seed:
+        sumo_cmd += ["--seed", str(args.seed)]
+    if args.tripinfo:
+        sumo_cmd += ["--tripinfo-output", args.tripinfo]
     print(f"Launching SUMO: {' '.join(sumo_cmd)}")
     traci.start(sumo_cmd, port=args.port)
 
@@ -293,7 +308,7 @@ def main() -> int:
     print()
 
     # ── Write output/v2/reroute_log.json ─────────────────────────────────────
-    REROUTE_LOG.parent.mkdir(parents=True, exist_ok=True)
+    reroute_log_path.parent.mkdir(parents=True, exist_ok=True)
     output = {
         "alert": {
             "t_trigger_s":  t_alert,
@@ -320,11 +335,11 @@ def main() -> int:
         },
     }
 
-    REROUTE_LOG.write_text(
+    reroute_log_path.write_text(
         json.dumps(output, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print(f"Reroute log → {REROUTE_LOG}")
+    print(f"Reroute log → {reroute_log_path}")
     print()
     print("=" * 60)
     print(f"  Vehicles rerouted      : {output['summary']['total_vehicles_rerouted']}")
