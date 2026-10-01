@@ -9,10 +9,10 @@
       "veh_03",
       "veh_04"
     ],
-    "avg_speed_kmh": 3.42,
-    "centroid_x": 3471.25,
-    "centroid_y": 3925.54,
+    "avg_speed_kmh": 3.41,
+    "centroid_x": 3471.24,
+    "centroid_y": 3925.3,
     "nearest_rsu": "rsu_02",
-    "alert_message": "Traffic jam on edge 544537085#3 near rsu_02 — avg 3.42 km/h for 138 s — take U-turn at nearest junction"
+    "alert_message": "Take alternate route at New Gajuwaka, jam detected at BHPV"
   }
 ]

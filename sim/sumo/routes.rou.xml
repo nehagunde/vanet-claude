@@ -38,6 +38,6 @@
     <trip id="veh_08" type="obu" from="-882296672#3" to="218746134#2" depart="106.7" departPos="random_free" departSpeed="max"/>
 
     <!-- seg_05_06 | LIGHT | ratio=1.150 | speed=43.5 km/h | 1 vehicle(s) -->
-    <trip id="veh_09" type="obu" from="-1221667957" to="218746134#2" depart="120.0" departPos="random_free" departSpeed="max"/>
+    <trip id="veh_09" type="obu" from="218746139" to="218746134#2" depart="120.0" departPos="random_free" departSpeed="max"/>
 
 </routes>
