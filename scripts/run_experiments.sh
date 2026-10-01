@@ -26,7 +26,7 @@
 #    --gui         launch SUMO-GUI for each run (very slow, for debug only)
 # =============================================================================
 
-set -euo pipefail
+set -eu
 cd "$(dirname "$0")/.."
 
 PRJ="$(pwd)"
@@ -35,7 +35,7 @@ NS3_ROOT="/home/kali/ns-3-dev"
 SEEDS="1 2 3 4 5"
 SKIP_NS3=0
 GUI_FLAG=""
-TRACI_PORT_BASE=8820   # base port; each scenario uses base+offset to avoid clashes
+TRACI_PORT_BASE=8820
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -58,7 +58,7 @@ echo ""
 
 mkdir -p "$EXP_OUT"
 
-# ── Helper: wait for SUMO to release port ────────────────────────────────────
+# ── Helper: wait for a TCP port to be free ────────────────────────────────────
 wait_port_free() {
   local port=$1
   for i in $(seq 1 20); do
@@ -68,6 +68,18 @@ wait_port_free() {
     sleep 0.5
   done
   echo "[WARN] Port $port still in use after 10s" >&2
+}
+
+# ── Helper: run a command, tee output to a log, print last N lines ────────────
+run_logged() {
+  local logfile="$1"; shift
+  local tail_n="${1:-5}";  shift
+  # Run the command; redirect stdout+stderr to log file.
+  # Exit code of the actual command is returned (not tee).
+  "$@" > "$logfile" 2>&1
+  local rc=$?
+  tail -n "$tail_n" "$logfile"
+  return $rc
 }
 
 # =============================================================================
@@ -82,12 +94,12 @@ for seed in $SEEDS; do
   NOJAM_DIR="$EXP_OUT/NO_JAM/seed_$seed"
   mkdir -p "$NOJAM_DIR"
 
-  sumo \
-    -c "$PRJ/sim/sumo/vanet.sumocfg" \
-    --seed "$seed" \
-    --tripinfo-output "$NOJAM_DIR/tripinfo.xml" \
-    --no-step-log \
-    2>&1 | grep -v "^$" | tail -4
+  run_logged "$NOJAM_DIR/sumo.log" 3 \
+    sumo \
+      -c "$PRJ/sim/sumo/vanet.sumocfg" \
+      --seed "$seed" \
+      --tripinfo-output "$NOJAM_DIR/tripinfo.xml" \
+      --no-step-log
 
   echo "  → $NOJAM_DIR/tripinfo.xml"
 
@@ -100,13 +112,13 @@ for seed in $SEEDS; do
   PORT_B=$((TRACI_PORT_BASE + 10))
   wait_port_free $PORT_B
 
-  python3 "$PRJ/sim/bridge/traci_supervisor.py" \
-    --mock \
-    --seed "$seed" \
-    --tripinfo "$JAMNO_DIR/tripinfo.xml" \
-    --port $PORT_B \
-    $GUI_FLAG \
-    2>&1 | grep -v "^$" | tail -6
+  run_logged "$JAMNO_DIR/run.log" 5 \
+    python3 "$PRJ/sim/bridge/traci_supervisor.py" \
+      --mock \
+      --seed "$seed" \
+      --tripinfo "$JAMNO_DIR/tripinfo.xml" \
+      --port $PORT_B \
+      $GUI_FLAG
 
   echo "  → $JAMNO_DIR/tripinfo.xml"
 
@@ -119,28 +131,25 @@ for seed in $SEEDS; do
   PORT_C=$((TRACI_PORT_BASE + 20))
   wait_port_free $PORT_C
 
-  # Step 1: SUMO run — injects jam, writes mobility.ns2 (NO tripinfo here;
-  #         tripinfo comes from the rerouter's SUMO run which includes rerouting)
-  python3 "$PRJ/sim/bridge/traci_supervisor.py" \
-    --mock \
-    --seed "$seed" \
-    --port $PORT_C \
-    $GUI_FLAG \
-    2>&1 | grep -v "^$" | tail -6
+  run_logged "$JALERT_DIR/step1_sumo.log" 4 \
+    python3 "$PRJ/sim/bridge/traci_supervisor.py" \
+      --mock \
+      --seed "$seed" \
+      --port $PORT_C \
+      $GUI_FLAG
 
   # Step 2: NS-3 802.11p simulation
   if [[ $SKIP_NS3 -eq 0 ]]; then
     echo "[JAM_WITH_ALERT seed=$seed] Step 2 — NS-3 802.11p simulation ..."
     cd "$NS3_ROOT"
-    ./ns3 run "vanet/vanet-scenario \
-      --mobilityFile=$PRJ/sim/bridge/mobility.ns2 \
-      --rsuFile=$PRJ/sim/bridge/rsu_static.json \
-      --logFile=$JALERT_DIR/alerts.log" \
-      2>&1 | grep -v "^$" | tail -4
+    run_logged "$JALERT_DIR/step2_ns3.log" 4 \
+      ./ns3 run "vanet/vanet-scenario \
+        --mobilityFile=$PRJ/sim/bridge/mobility.ns2 \
+        --rsuFile=$PRJ/sim/bridge/rsu_static.json \
+        --logFile=$JALERT_DIR/alerts.log"
     cd "$PRJ"
   else
     echo "[JAM_WITH_ALERT seed=$seed] Step 2 — SKIPPING NS-3 (--skip-ns3 set)"
-    # Reuse alerts log from the baseline run if it exists
     if [[ ! -f "$JALERT_DIR/alerts.log" ]]; then
       if [[ -f "$PRJ/output/v2/alerts.log" ]]; then
         cp "$PRJ/output/v2/alerts.log" "$JALERT_DIR/alerts.log"
@@ -149,23 +158,25 @@ for seed in $SEEDS; do
         echo "  ERROR: No alerts.log found. Run without --skip-ns3 at least once." >&2
         exit 1
       fi
+    else
+      echo "  Reusing existing $JALERT_DIR/alerts.log"
     fi
   fi
   echo "  → $JALERT_DIR/alerts.log"
 
-  # Step 3: Rerouter — runs its own SUMO with same seed + jam + rerouting
-  echo "[JAM_WITH_ALERT seed=$seed] Step 3 — Rerouter (SUMO + TraCI + rerouting) ..."
+  # Step 3: Rerouter
+  echo "[JAM_WITH_ALERT seed=$seed] Step 3 — Rerouter (SUMO + rerouting) ..."
   PORT_D=$((TRACI_PORT_BASE + 30))
   wait_port_free $PORT_D
 
-  python3 "$PRJ/data_node/rerouter_v2.py" \
-    --seed "$seed" \
-    --alerts-log "$JALERT_DIR/alerts.log" \
-    --tripinfo "$JALERT_DIR/tripinfo.xml" \
-    --reroute-log "$JALERT_DIR/reroute_log.json" \
-    --port $PORT_D \
-    $GUI_FLAG \
-    2>&1 | grep -v "^$" | tail -8
+  run_logged "$JALERT_DIR/step3_rerouter.log" 8 \
+    python3 "$PRJ/data_node/rerouter_v2.py" \
+      --seed "$seed" \
+      --alerts-log "$JALERT_DIR/alerts.log" \
+      --tripinfo "$JALERT_DIR/tripinfo.xml" \
+      --reroute-log "$JALERT_DIR/reroute_log.json" \
+      --port $PORT_D \
+      $GUI_FLAG
 
   echo "  → $JALERT_DIR/tripinfo.xml"
   echo "  → $JALERT_DIR/reroute_log.json"
