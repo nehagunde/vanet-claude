@@ -52,18 +52,40 @@ TTIME_PENALTY         = 99999.0
 
 def parse_ns3_alert(log_path: Path) -> tuple:
     """
-    Scan the NS-3 alerts log for the first RELAY_SENT line.
-    Returns (t_alert: float, rsu_id: int, msg: str) or (None, None, None).
+    Scan the NS-3 alerts log for two events:
+      1. First JAM_DETECTED_FROM at RSU=12 → trigger time (earliest signal)
+      2. First RELAY_SENT at RSU=12       → human-readable alert message
+
+    Returns (t_trigger: float, rsu_id: int, alert_msg: str, t_relay: float)
+    or (None, None, None, None) if no JAM_DETECTED_FROM found.
     """
-    pattern = re.compile(
+    pat_jam = re.compile(
+        r'\[T=([0-9.]+)\]\s+RSU=(\d+)\s+JAM_DETECTED_FROM=\d+'
+    )
+    pat_relay = re.compile(
         r'\[T=([0-9.]+)\]\s+RSU=(\d+)\s+RELAY_SENT\s+PEER=[\d.]+\s+MSG="([^"]*)"'
     )
+    t_trigger = None
+    rsu_id    = None
+    t_relay   = None
+    alert_msg = "Take alternate route: jam detected ahead"   # fallback
+
     with log_path.open(encoding="utf-8") as f:
         for line in f:
-            m = pattern.search(line)
-            if m:
-                return float(m.group(1)), int(m.group(2)), m.group(3)
-    return None, None, None
+            if t_trigger is None:
+                m = pat_jam.search(line)
+                if m and int(m.group(2)) == 12:   # RSU=12 is BHPV
+                    t_trigger = float(m.group(1))
+                    rsu_id    = int(m.group(2))
+            if t_relay is None:
+                m = pat_relay.search(line)
+                if m and int(m.group(2)) == 12:
+                    t_relay   = float(m.group(1))
+                    alert_msg = m.group(3)
+            if t_trigger is not None and t_relay is not None:
+                break
+
+    return t_trigger, rsu_id, alert_msg, t_relay
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -84,15 +106,17 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    t_alert, alert_rsu, alert_msg = parse_ns3_alert(ALERTS_LOG)
+    t_alert, alert_rsu, alert_msg, t_relay = parse_ns3_alert(ALERTS_LOG)
     if t_alert is None:
-        print("ERROR: No RELAY_SENT event found in NS-3 alerts log.\n"
+        print("ERROR: No JAM_DETECTED_FROM event found for RSU=12 in NS-3 alerts log.\n"
               f"       Checked: {ALERTS_LOG}", file=sys.stderr)
         return 1
 
-    print(f"NS-3 alert: T={t_alert:.1f}s  RSU={alert_rsu}"
-          f"  MSG=\"{alert_msg}\"")
-    print(f"  → Rerouting trigger: T={t_alert:.0f}s (RELAY_SENT)")
+    print(f"NS-3 first detection: T={t_alert:.1f}s  RSU={alert_rsu}"
+          f"  (JAM_DETECTED_FROM)")
+    if t_relay is not None:
+        print(f"NS-3 relay alert:     T={t_relay:.1f}s  MSG=\"{alert_msg}\"")
+    print(f"  → Rerouting trigger: T={t_alert:.0f}s (first JAM_DETECTED_FROM at RSU=12)")
     print()
 
     # ── Start SUMO ────────────────────────────────────────────────────────────
@@ -151,7 +175,7 @@ def main() -> int:
             # ── Alert-time rerouting (fires exactly once) ─────────────────────
             if not alert_applied and t >= t_alert and jam_edges:
                 alert_applied = True
-                print(f"[T={t:.0f}s] NS-3 RELAY alert — scanning "
+                print(f"[T={t:.0f}s] NS-3 first-detection alert — scanning "
                       f"{len(vehicles)} vehicle(s), {len(jam_edges)} jam edge(s)")
                 print(f"  Jam edges: {sorted(jam_edges)}")
                 print()
@@ -229,15 +253,17 @@ def main() -> int:
     REROUTE_LOG.parent.mkdir(parents=True, exist_ok=True)
     output = {
         "alert": {
-            "t_alert_s":    t_alert,
+            "t_trigger_s":  t_alert,
+            "t_relay_s":    t_relay,
             "rsu_id":       alert_rsu,
-            "alert_source": f"RELAY_SENT RSU={alert_rsu} (NS-3 wired backhaul relay)",
+            "alert_source": f"FIRST JAM_DETECTED_FROM RSU={alert_rsu} (NS-3 802.11p)",
             "alert_msg":    alert_msg,
             "note": (
-                "Alert time derived from NS-3 RELAY_SENT event at BHPV RSU quorum. "
-                "No OBU logged JAM_ALERT_RECV because all vehicles had passed "
-                "RSU-01 (New Gajuwaka) radio range before T=245 s. "
-                "RELAY_SENT is the earliest point the V2I system issued a warning."
+                "Trigger time = first JAM_DETECTED_FROM at RSU=12 (BHPV). "
+                "This is the earliest NS-3 signal that the jam exists, occurring "
+                "~43 s before veh_00 enters the jam zone. "
+                "RELAY_SENT (full quorum + backhaul relay) fires later at "
+                f"T={t_relay:.0f}s but by then all approaching vehicles have passed BHPV."
             ),
         },
         "jam_edges":     sorted(jam_edges),
@@ -261,7 +287,7 @@ def main() -> int:
     print(f"  Vehicles rerouted      : {output['summary']['total_vehicles_rerouted']}")
     print(f"  Avoided jam            : {output['summary']['vehicles_avoided_jam']}")
     print(f"  No alternate found     : {output['summary']['vehicles_no_alternate']}")
-    print(f"  Alert fired at         : T={t_alert:.0f}s (NS-3 RELAY_SENT)")
+    print(f"  Alert fired at         : T={t_alert:.0f}s (first JAM_DETECTED_FROM RSU=12)")
     print(f"  Jam edges discovered   : {sorted(jam_edges)}")
     print("=" * 60)
     return 0

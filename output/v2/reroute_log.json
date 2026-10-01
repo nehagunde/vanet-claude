@@ -1,10 +1,11 @@
 {
   "alert": {
-    "t_alert_s": 245.0,
+    "t_trigger_s": 98.0,
+    "t_relay_s": 245.0,
     "rsu_id": 12,
-    "alert_source": "RELAY_SENT RSU=12 (NS-3 wired backhaul relay)",
+    "alert_source": "FIRST JAM_DETECTED_FROM RSU=12 (NS-3 802.11p)",
     "alert_msg": "Take alternate route at New Gajuwaka, jam detected at BHPV",
-    "note": "Alert time derived from NS-3 RELAY_SENT event at BHPV RSU quorum. No OBU logged JAM_ALERT_RECV because all vehicles had passed RSU-01 (New Gajuwaka) radio range before T=245 s. RELAY_SENT is the earliest point the V2I system issued a warning."
+    "note": "Trigger time = first JAM_DETECTED_FROM at RSU=12 (BHPV). This is the earliest NS-3 signal that the jam exists, occurring ~43 s before veh_00 enters the jam zone. RELAY_SENT (full quorum + backhaul relay) fires later at T=245s but by then all approaching vehicles have passed BHPV."
   },
   "jam_edges": [
     "-280178580#1",
