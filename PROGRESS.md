@@ -100,6 +100,18 @@ If `QUORUM_REACHED` appears exactly once (not repeated every beacon), Phase 2 is
 
 ---
 
+## Phase 3 fix — RSU quorum window removed  (2026-10-01)
+
+**Root cause**: `HandleRead()` cleared `m_seenSenders` whenever `now - m_firstSlowAt > 30 s`.
+With 10 vehicles spread over 6 km, vehicles pass through rsu_02 (BHPV) one at a time with
+>30 s gaps.  The window expired before a second vehicle arrived, so DISTINCT_COUNT was always 1.
+
+**Fix applied in `sim/ns3/jam-alert-app.cc`**: removed the 30-s expiry block and
+`m_firstSlowAt` setter entirely.  `m_seenSenders` now accumulates persistently across the
+whole jam period.  QUORUM_REACHED fires once when ≥3 distinct senders have been seen.
+
+---
+
 ## Phase 3 — RSU-to-RSU Wired Backhaul Relay  ✅
 
 ### What changed
