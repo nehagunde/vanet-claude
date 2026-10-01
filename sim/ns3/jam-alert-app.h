@@ -24,6 +24,7 @@
 
 #include <cstdint>
 #include <fstream>
+#include <set>
 #include <string>
 
 namespace ns3 {
@@ -98,9 +99,13 @@ private:
     EventId      m_beaconEvent;      // periodic beacon timer
     std::ofstream m_log;             // shared log file (append)
 
-    // JAM detection counters (RSU-side)
-    uint32_t m_slowCount    {0};     // vehicles reporting < 5 km/h
-    double   m_firstSlowAt  {0.0};   // simulation time of first slow report
+    // OBU-side: consecutive beacon intervals below speed threshold
+    uint32_t m_slowSeconds {0};
+
+    // RSU-side: distinct OBU senders in current 30-second window
+    std::set<uint32_t> m_seenSenders;
+    double   m_firstSlowAt {0.0};   // sim time of first JAM_DETECTED in window
+    bool     m_jamFired    {false}; // fire alert once per jam; reset when window expires
 
     static constexpr double BEACON_INTERVAL_S   = 1.0;   // beacon every 1 s
     static constexpr float  JAM_SPEED_THRESHOLD = 5.0f;  // km/h

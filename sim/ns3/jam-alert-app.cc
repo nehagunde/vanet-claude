@@ -36,6 +36,7 @@
 #include "ns3/uinteger.h"
 #include "ns3/vector.h"
 
+#include <cmath>
 #include <cstring>
 #include <iomanip>
 #include <sstream>
@@ -109,16 +110,27 @@ void JamAlertApp::StopApplication() {
 // ── Transmission ──────────────────────────────────────────────────────────────
 
 void JamAlertApp::SendBeacon() {
-    // Read position from mobility model
     Ptr<MobilityModel> mob = GetNode()->GetObject<MobilityModel>();
     Vector pos = mob ? mob->GetPosition() : Vector(0, 0, 0);
 
-    // Speed placeholder: NS-3 doesn't have live speed data from SUMO.
-    // Phase 4 jam_detector.py reads speed_log.json for the real detection.
-    // Here we always send BEACON so the 802.11p contact log is populated.
-    float speed_kmh = -1.0f;   // -1 = "not available"
+    // Real speed from the ns2 waypoint mobility model velocity vector
+    float speed_kmh = 0.0f;
+    if (mob) {
+        Vector vel = mob->GetVelocity();
+        double speed_ms = std::sqrt(vel.x * vel.x + vel.y * vel.y);
+        speed_kmh = static_cast<float>(speed_ms * 3.6);
+    }
 
-    MsgType type = BEACON;  // JAM_DETECTED triggered only when speed injected
+    // Count consecutive 1-second intervals below jam threshold
+    if (speed_kmh < JAM_SPEED_THRESHOLD) {
+        m_slowSeconds++;
+    } else {
+        m_slowSeconds = 0;
+    }
+
+    // Upgrade to JAM_DETECTED once the vehicle has been slow for > 30 s
+    MsgType type = (m_slowSeconds > static_cast<uint32_t>(JAM_TIME_THRESHOLD))
+                   ? JAM_DETECTED : BEACON;
 
     VanetMsg msg{};
     msg.msg_type  = static_cast<uint8_t>(type);
@@ -126,7 +138,7 @@ void JamAlertApp::SendBeacon() {
     msg.speed_kmh = speed_kmh;
     msg.pos_x     = static_cast<float>(pos.x);
     msg.pos_y     = static_cast<float>(pos.y);
-    std::strncpy(msg.edge, "unknown", sizeof(msg.edge) - 1);
+    std::strncpy(msg.edge, "v2i", sizeof(msg.edge) - 1);
     msg.alert_msg[0] = '\0';
 
     Ptr<Packet> pkt = Create<Packet>(
@@ -138,11 +150,12 @@ void JamAlertApp::SendBeacon() {
         << Simulator::Now().GetSeconds()
         << "] NODE=" << m_nodeId
         << " SENT=" << (type == BEACON ? "BEACON" : "JAM_DETECTED")
-        << " SPEED=" << speed_kmh
-        << " X=" << pos.x << " Y=" << pos.y;
+        << " SPEED=" << std::fixed << std::setprecision(2) << speed_kmh
+        << " X=" << std::fixed << std::setprecision(1) << pos.x
+        << " Y=" << pos.y
+        << " SLOW_S=" << m_slowSeconds;
     LogEvent(oss.str());
 
-    // Reschedule
     m_beaconEvent = Simulator::Schedule(
         Seconds(BEACON_INTERVAL_S), &JamAlertApp::SendBeacon, this);
 }
