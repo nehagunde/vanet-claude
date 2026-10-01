@@ -1,0 +1,74 @@
+{
+  "jam_events": [
+    {
+      "detected_at_s": 229,
+      "edge": "544537085#3",
+      "vehicles": [
+        "veh_02",
+        "veh_03",
+        "veh_04"
+      ],
+      "alert": "JAM on 544537085#3 — U-turn recommended"
+    }
+  ],
+  "reroute_events": [
+    {
+      "t_s": 229,
+      "veh_id": "veh_02",
+      "jam_edge": [
+        "544537085#3"
+      ],
+      "new_route_len": 21,
+      "action": "REROUTED — avoid jam, take alternate path"
+    },
+    {
+      "t_s": 229,
+      "veh_id": "veh_03",
+      "jam_edge": [
+        "544537085#3"
+      ],
+      "new_route_len": 21,
+      "action": "REROUTED — avoid jam, take alternate path"
+    },
+    {
+      "t_s": 229,
+      "veh_id": "veh_04",
+      "jam_edge": [
+        "544537085#3"
+      ],
+      "new_route_len": 21,
+      "action": "REROUTED — avoid jam, take alternate path"
+    },
+    {
+      "t_s": 289,
+      "veh_id": "veh_02",
+      "jam_edge": [
+        "544537085#3"
+      ],
+      "new_route_len": 21,
+      "action": "REROUTED — avoid jam, take alternate path"
+    },
+    {
+      "t_s": 289,
+      "veh_id": "veh_03",
+      "jam_edge": [
+        "544537085#3"
+      ],
+      "new_route_len": 21,
+      "action": "REROUTED — avoid jam, take alternate path"
+    },
+    {
+      "t_s": 289,
+      "veh_id": "veh_04",
+      "jam_edge": [
+        "544537085#3"
+      ],
+      "new_route_len": 21,
+      "action": "REROUTED — avoid jam, take alternate path"
+    }
+  ],
+  "summary": {
+    "total_jams_detected": 1,
+    "total_vehicles_rerouted": 3
+  }
+}
