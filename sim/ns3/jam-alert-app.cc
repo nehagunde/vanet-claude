@@ -276,20 +276,13 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
             LogEvent(warn.str());
         }
 
-        // RSU jam-aggregation logic — count DISTINCT vehicles in 30-s window
+        // RSU jam-aggregation logic — accumulate DISTINCT vehicles over jam period.
+        // With sparse traffic (10 vehicles, ~1 km RSU spacing) vehicles pass through
+        // one at a time; a 30-s rolling window empties before the 3rd vehicle arrives.
+        // Instead the RSU collects distinct senders for the whole simulation and fires
+        // exactly once when >= JAM_VEH_THRESHOLD distinct OBUs have reported slow speed.
         if (m_isRsu && msg.msg_type == JAM_DETECTED) {
             double now = Simulator::Now().GetSeconds();
-
-            // Window expired — reset
-            if (m_firstSlowAt > 0.0 && (now - m_firstSlowAt) > JAM_TIME_THRESHOLD) {
-                m_seenSenders.clear();
-                m_firstSlowAt = 0.0;
-                m_jamFired    = false;
-            }
-
-            if (m_firstSlowAt == 0.0) {
-                m_firstSlowAt = now;
-            }
 
             m_seenSenders.insert(msg.sender_id);
 
