@@ -1,0 +1,46 @@
+{
+  "alert": {
+    "t_alert_s": 245.0,
+    "rsu_id": 12,
+    "alert_source": "RELAY_SENT RSU=12 (NS-3 wired backhaul relay)",
+    "alert_msg": "Take alternate route at New Gajuwaka, jam detected at BHPV",
+    "note": "Alert time derived from NS-3 RELAY_SENT event at BHPV RSU quorum. No OBU logged JAM_ALERT_RECV because all vehicles had passed RSU-01 (New Gajuwaka) radio range before T=245 s. RELAY_SENT is the earliest point the V2I system issued a warning."
+  },
+  "jam_edges": [
+    "-280178580#1",
+    "-877730919#0",
+    "218746140#8",
+    "544537081#1",
+    "544537081#11",
+    "544537081#12",
+    "544537081#2",
+    "544537081#3",
+    "544537081#4",
+    "544537081#5",
+    "544537081#6",
+    "544537081#7",
+    "544537081#8",
+    "544537081#9",
+    "544537085#10",
+    "544537085#3",
+    "544537085#4",
+    "544537085#5",
+    "544537085#6",
+    "544537085#7",
+    "544537085#8",
+    "544537085#9",
+    "548058730#0",
+    "742760569#2",
+    "883673740",
+    "90800092#12",
+    "90800092#13",
+    "90800092#14",
+    "90800092#15"
+  ],
+  "reroute_events": [],
+  "summary": {
+    "total_vehicles_rerouted": 0,
+    "vehicles_avoided_jam": 0,
+    "vehicles_no_alternate": 0
+  }
+}
