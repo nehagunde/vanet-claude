@@ -449,6 +449,8 @@ canvas {{ width: 100%; height: 100%; }}
         <div>Waiting for events...</div>
       </div>
     </div>
+
+    {'<div id="live-traffic-panel"><h3>Live Traffic (Google Maps)</h3><div id="seg-list" style="font-size:0.75rem;display:flex;flex-direction:column;gap:3px;"></div></div>' if mode == 'live' else ''}
   </div>
 </div>
 
@@ -584,27 +586,56 @@ function draw() {{
 
   // ── Road ─────────────────────────────────────────────────────────────────
   const road_pts = RSU_INFO.map(r => toCanvas(r.x, r.y));
-  function drawRoad(color, width) {{
-    ctx.beginPath();
-    ctx.moveTo(road_pts[0][0], road_pts[0][1]);
-    for (let i=1;i<road_pts.length;i++) ctx.lineTo(road_pts[i][0], road_pts[i][1]);
-    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.stroke();
-  }}
-  drawRoad("#30363d", 24);
-  drawRoad("#444c56", 16);
-  ctx.setLineDash([20,14]);
-  drawRoad("#ffbe0b44", 2);
-  ctx.setLineDash([]);
 
-  // Jam segment highlight (timing from JAM_EVENTS injection, not NS-3)
-  const activeJam = JAM_EVENTS.find(j => t >= j.start && t <= j.end) || null;
-  if (activeJam && rsus.length >= 4) {{
-    const [x1,y1] = toCanvas(rsus[2].x, rsus[2].y);
-    const [x2,y2] = toCanvas(rsus[3].x, rsus[3].y);
-    const grad = ctx.createLinearGradient(x1,y1,x2,y2);
-    grad.addColorStop(0,"#ff444433"); grad.addColorStop(0.5,"#ff444488"); grad.addColorStop(1,"#ff444433");
+  // Base road (all modes)
+  for (let i=0; i<road_pts.length-1; i++) {{
+    const [x1,y1] = road_pts[i], [x2,y2] = road_pts[i+1];
     ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
-    ctx.strokeStyle = grad; ctx.lineWidth = 20; ctx.stroke();
+    ctx.strokeStyle = "#30363d"; ctx.lineWidth = 24; ctx.lineCap="round"; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+    ctx.strokeStyle = "#444c56"; ctx.lineWidth = 16; ctx.stroke();
+  }}
+
+  if (SIM_MODE === "live" && SEGMENT_INFO.length > 0) {{
+    // Live mode: colour each segment by Google Maps congestion level
+    SEGMENT_INFO.forEach(seg => {{
+      const [x1,y1] = road_pts[seg.fi] || [0,0];
+      const [x2,y2] = road_pts[seg.ti] || [0,0];
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.strokeStyle = seg.colour + "cc"; ctx.lineWidth = 10; ctx.lineCap="round"; ctx.stroke();
+      // Speed label mid-segment
+      const mx=(x1+x2)/2, my=(y1+y2)/2 - 14;
+      ctx.fillStyle="rgba(0,0,0,0.65)"; ctx.beginPath();
+      ctx.roundRect(mx-26,my-10,52,14,3); ctx.fill();
+      ctx.fillStyle=seg.colour; ctx.font="bold 9px 'Segoe UI'"; ctx.textAlign="center";
+      ctx.fillText(seg.speed.toFixed(0)+" km/h", mx, my);
+    }});
+    // Dashed centre line
+    ctx.setLineDash([20,14]);
+    for (let i=0; i<road_pts.length-1; i++) {{
+      const [x1,y1]=road_pts[i],[x2,y2]=road_pts[i+1];
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.strokeStyle="#ffffff22"; ctx.lineWidth=2; ctx.stroke();
+    }}
+    ctx.setLineDash([]);
+  }} else {{
+    // Mock mode: dashed centre line + SUMO jam highlight
+    ctx.setLineDash([20,14]);
+    for (let i=0;i<road_pts.length-1;i++) {{
+      const [x1,y1]=road_pts[i],[x2,y2]=road_pts[i+1];
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.strokeStyle="#ffbe0b44"; ctx.lineWidth=2; ctx.stroke();
+    }}
+    ctx.setLineDash([]);
+    const activeJam = JAM_EVENTS.find(j => t >= j.start && t <= j.end) || null;
+    if (activeJam && rsus.length >= 4) {{
+      const [x1,y1] = toCanvas(rsus[2].x, rsus[2].y);
+      const [x2,y2] = toCanvas(rsus[3].x, rsus[3].y);
+      const grad = ctx.createLinearGradient(x1,y1,x2,y2);
+      grad.addColorStop(0,"#ff444433"); grad.addColorStop(0.5,"#ff444488"); grad.addColorStop(1,"#ff444433");
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.strokeStyle = grad; ctx.lineWidth = 20; ctx.stroke();
+    }}
   }}
 
   // ── RSU radio range circles ────────────────────────────────────────────────
@@ -818,6 +849,31 @@ function draw() {{
     }}).join("");
   }} else {{
     listEl.innerHTML = '<div style="color:#484f58;font-size:0.78rem;padding:8px">No active vehicles</div>';
+  }}
+
+  // ── Live traffic sidebar (populated once) ────────────────────────────────
+  if (SIM_MODE === "live" && SEGMENT_INFO.length > 0 && !window._segBuilt) {{
+    window._segBuilt = true;
+    const el = document.getElementById("seg-list");
+    if (el) {{
+      el.innerHTML = SEGMENT_INFO.map(seg => {{
+        const lvlColour = seg.colour;
+        const bar = Math.round(Math.min(100, (1/seg.ratio)*100));
+        return `<div style="background:#0d1117;border:1px solid #21262d;border-radius:5px;padding:5px 8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <span style="color:#8b949e;font-size:0.7rem">${{seg.label}}</span>
+            <span style="background:${{lvlColour}}22;color:${{lvlColour}};padding:1px 6px;border-radius:10px;font-size:0.65rem;font-weight:bold;border:1px solid ${{lvlColour}}44">${{seg.level.toUpperCase()}}</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <div style="flex:1;height:4px;background:#21262d;border-radius:2px">
+              <div style="width:${{bar}}%;height:100%;background:${{lvlColour}};border-radius:2px"></div>
+            </div>
+            <span style="color:${{lvlColour}};font-family:monospace;font-size:0.72rem;min-width:52px;text-align:right">${{seg.speed}} km/h</span>
+          </div>
+          <div style="color:#484f58;font-size:0.65rem;margin-top:2px">ratio ${{seg.ratio}}× · ${{seg.dist_km}} km</div>
+        </div>`;
+      }}).join("");
+    }}
   }}
 
   // ── Alert banner (event-driven from NS-3 QUORUM_REACHED) ─────────────────
