@@ -48,4 +48,52 @@ cp /home/kali/vanet_claude/sim/ns3/vanet-scenario.cc scratch/
 
 ---
 
-## Phase 2 — (pending)
+## Phase 2 — Real Jam Detection in NS-3  ✅
+
+### What changed
+
+| File | Change | Why |
+|---|---|---|
+| `sim/ns3/jam-alert-app.h` | Added `#include <set>`; replaced `m_slowCount` with `m_slowSeconds` (OBU), `m_seenSenders` set + `m_firstSlowAt` + `m_jamFired` (RSU) | OBU needs per-vehicle consecutive slow counter; RSU needs distinct sender set |
+| `sim/ns3/jam-alert-app.cc` | `SendBeacon()`: reads real speed via `GetVelocity()`, increments `m_slowSeconds`, sends `JAM_DETECTED` when `> 30 s`; `HandleRead()`: RSU inserts `sender_id` into `m_seenSenders`, fires QUORUM_REACHED once when ≥ 3 distinct vehicles, resets window after 30 s | Phase 2 requirements: real speed, distinct vehicle count, one alert per jam |
+| `scripts/run_mock.sh` | `--logFile` → `output/v2/alerts.log` | New outputs go to output/v2/ per convention |
+| `scripts/run_live.sh` | Same | Same |
+
+### How to test (Kali Linux)
+
+```bash
+# 1. Copy updated NS-3 files
+cp /home/kali/vanet_claude/sim/ns3/jam-alert-app.h   /home/kali/ns-3-dev/scratch/vanet/
+cp /home/kali/vanet_claude/sim/ns3/jam-alert-app.cc  /home/kali/ns-3-dev/scratch/vanet/
+cp /home/kali/vanet_claude/sim/ns3/vanet-scenario.cc /home/kali/ns-3-dev/scratch/vanet/
+
+# 2. Rebuild NS-3
+cd /home/kali/ns-3-dev
+./ns3 build
+
+# 3. Run mock pipeline
+cd /home/kali/vanet_claude
+bash scripts/run_mock.sh
+```
+
+### Lines in output/v2/alerts.log that prove it works
+
+**OBU sending JAM_DETECTED** (appears after vehicle is slow > 30 s):
+```
+[T=92.0] NODE=3 SENT=JAM_DETECTED SPEED=1.20 X=... Y=... SLOW_S=31
+```
+
+**RSU logging each JAM_DETECTED received**:
+```
+[T=93.0] RSU=12 JAM_DETECTED_FROM=3 SPEED=1.20 DISTINCT_COUNT=1
+[T=93.0] RSU=12 JAM_DETECTED_FROM=5 SPEED=0.80 DISTINCT_COUNT=2
+[T=93.0] RSU=12 JAM_DETECTED_FROM=7 SPEED=1.10 DISTINCT_COUNT=3
+```
+
+**RSU firing exactly once when quorum reached**:
+```
+[T=93.0] RSU=12 QUORUM_REACHED vehicles=[3,5,7]
+[T=93.0] NODE=12 SENT=JAM_ALERT MSG="Take alternate route at New Gajuwaka, jam detected at BHPV Junction"
+```
+
+If `QUORUM_REACHED` appears exactly once (not repeated every beacon), Phase 2 is working correctly.

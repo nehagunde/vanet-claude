@@ -38,10 +38,11 @@ echo ""
 # ── PHASE 3b — NS-3 802.11p radio simulation ─────────────────────────────────
 echo "[PHASE 3b] Running NS-3 802.11p WAVE simulation ..."
 cd /home/kali/ns-3-dev
+mkdir -p /home/kali/vanet_claude/output/v2
 ./ns3 run "vanet/vanet-scenario \
   --mobilityFile=/home/kali/vanet_claude/sim/bridge/mobility.ns2 \
   --rsuFile=/home/kali/vanet_claude/sim/bridge/rsu_static.json \
-  --logFile=/home/kali/vanet_claude/output/alerts.log" 2>&1 | tail -5
+  --logFile=/home/kali/vanet_claude/output/v2/alerts.log" 2>&1 | tail -5
 cd /home/kali/vanet_claude
 echo ""
 

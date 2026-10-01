@@ -219,31 +219,53 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
             << " MSG=\"" << msg.alert_msg << "\"";
         LogEvent(oss.str());
 
-        // RSU jam-aggregation logic
+        // RSU jam-aggregation logic — count DISTINCT vehicles in 30-s window
         if (m_isRsu && msg.msg_type == JAM_DETECTED) {
             double now = Simulator::Now().GetSeconds();
 
-            if (m_slowCount == 0) {
+            // Window expired — reset
+            if (m_firstSlowAt > 0.0 && (now - m_firstSlowAt) > JAM_TIME_THRESHOLD) {
+                m_seenSenders.clear();
+                m_firstSlowAt = 0.0;
+                m_jamFired    = false;
+            }
+
+            if (m_firstSlowAt == 0.0) {
                 m_firstSlowAt = now;
             }
 
-            // Only count reports within the time window
-            if ((now - m_firstSlowAt) <= JAM_TIME_THRESHOLD) {
-                m_slowCount++;
-            } else {
-                // Window expired — restart
-                m_slowCount   = 1;
-                m_firstSlowAt = now;
-            }
+            m_seenSenders.insert(msg.sender_id);
 
-            if (m_slowCount >= JAM_VEH_THRESHOLD) {
-                std::string msg = m_alertMsg.empty()
+            // Log every JAM_DETECTED received at RSU
+            std::ostringstream rlog;
+            rlog << "[T=" << std::fixed << std::setprecision(1) << now
+                 << "] RSU=" << m_nodeId
+                 << " JAM_DETECTED_FROM=" << msg.sender_id
+                 << " SPEED=" << std::fixed << std::setprecision(2) << msg.speed_kmh
+                 << " DISTINCT_COUNT=" << m_seenSenders.size();
+            LogEvent(rlog.str());
+
+            if (!m_jamFired && m_seenSenders.size() >= JAM_VEH_THRESHOLD) {
+                m_jamFired = true;
+
+                // Log QUORUM_REACHED with the vehicle list
+                std::ostringstream qlog;
+                qlog << "[T=" << std::fixed << std::setprecision(1) << now
+                     << "] RSU=" << m_nodeId
+                     << " QUORUM_REACHED vehicles=[";
+                bool first = true;
+                for (uint32_t id : m_seenSenders) {
+                    if (!first) qlog << ",";
+                    qlog << id;
+                    first = false;
+                }
+                qlog << "]";
+                LogEvent(qlog.str());
+
+                std::string alertStr = m_alertMsg.empty()
                     ? "Take alternate route: jam detected ahead"
                     : m_alertMsg;
-                SendAlert(JAM_ALERT, msg);
-                // Reset so we don't spam
-                m_slowCount   = 0;
-                m_firstSlowAt = 0.0;
+                SendAlert(JAM_ALERT, alertStr);
             }
         }
     }
