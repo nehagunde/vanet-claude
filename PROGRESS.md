@@ -222,10 +222,36 @@ cat output/v2/reroute_log.json
 }
 ```
 
-### Log lines that prove Phase 4 works
+### Trigger refinement (two-step reasoning)
+
+First attempt used `RELAY_SENT` (T=245) → 0 rerouted. By T=245 all
+approaching vehicles (veh_00, veh_01) had already passed BHPV.
+
+Second attempt used `FIRST JAM_DETECTED_FROM RSU=12` (T=98) → pre-seeding
+jam_edges from `sim/bridge/speed_log.json` required so that veh_00/01's
+future route edges are known before vehicles physically reach them.
+
+Dynamic discovery was tightened to speed-gated (only add edge when vehicle
+is slow AND in zone), preventing bypass roads from entering the jam set.
+
+### Confirmed output (actual run)
+
 ```
-[T=245s] NS-3 RELAY alert — scanning N vehicle(s), M jam edge(s)
-  veh_07: REROUTED  old=X edges  new=Y edges  [AVOIDED JAM]
-  veh_08: REROUTED  old=X edges  new=Y edges  [AVOIDED JAM]
+Pre-seeded 11 jam edge(s) from speed log
+[T=98s] NS-3 first-detection alert — scanning 8 vehicle(s), 11 jam edge(s)
+  veh_00: REROUTED  old=27 edges  new=52 edges  [AVOIDED JAM]
+  veh_01: REROUTED  old=35 edges  new=60 edges  [AVOIDED JAM]
   veh_02: SKIP — already on jam edge (544537085#3)
+  veh_03: SKIP — already on jam edge (544537085#3)
+  veh_04: SKIP — already on jam edge (218746140#8)
+  veh_05: SKIP — already on jam edge (544537081#1)
+  veh_06: SKIP — already on jam edge (544537081#1)
+  veh_07: SKIP — no jam edge in remaining route (already past jam zone)
+
+Vehicles rerouted : 2 / Avoided jam : 2 / No alternate found : 0
+Alert fired at    : T=98s (first JAM_DETECTED_FROM RSU=12)
 ```
+
+The longer new routes (52 and 60 edges vs 27 and 35) confirm SUMO found
+the residential/service road bypass west of BHPV (`548058730#1` →
+`-883679852` → `-883679850#0`) rather than the direct NH-16 corridor.
