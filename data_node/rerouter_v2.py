@@ -34,11 +34,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SUMOCFG      = PROJECT_ROOT / "sim" / "sumo" / "vanet.sumocfg"
 ALERTS_LOG   = PROJECT_ROOT / "output" / "v2" / "alerts.log"
 REROUTE_LOG  = PROJECT_ROOT / "output" / "v2" / "reroute_log.json"
+SPEEDLOG     = PROJECT_ROOT / "sim" / "bridge" / "speed_log.json"
 
 # ── Jam injection parameters (must match traci_supervisor.py) ─────────────────
 JAM_Y_MIN, JAM_Y_MAX = 3700.0, 4800.0
 JAM_X_MIN, JAM_X_MAX = 3000.0, 4200.0
 JAM_SPEED_MS          = 1.2     # ~4.3 km/h
+JAM_SPEED_KMH         = JAM_SPEED_MS * 3.6   # 4.32 km/h — threshold for "slow"
 JAM_START_S           = 60.0
 JAM_END_S             = 350.0
 SIM_DURATION_S        = 600.0
