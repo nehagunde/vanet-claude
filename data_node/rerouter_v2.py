@@ -90,6 +90,36 @@ def parse_ns3_alert(log_path: Path) -> tuple:
     return t_trigger, rsu_id, alert_msg, t_relay
 
 
+def preseed_jam_edges(speedlog_path: Path) -> set:
+    """
+    Load the edges where vehicles were actually slow (<JAM_SPEED_KMH) inside
+    the jam zone from the previous SUMO run's speed log.
+
+    This gives the complete set of NH-16 jam segments upfront, so the rerouter
+    does not have to wait for vehicles to enter those edges during THIS run.
+    Bypass roads (residential / service) are excluded because no vehicle was
+    slow on them in the previous run.
+    """
+    if not speedlog_path.exists():
+        print(f"  [preseed] speed log not found: {speedlog_path} — skipping")
+        return set()
+    with speedlog_path.open(encoding="utf-8") as f:
+        speed_log = json.load(f)
+    edges: set = set()
+    for vehicles in speed_log.values():
+        for info in vehicles.values():
+            edge  = info.get("edge", "")
+            speed = info.get("speed_kmh", 100.0)
+            y     = info.get("y", 0.0)
+            x     = info.get("x", 0.0)
+            if (not edge.startswith(":")
+                    and speed < JAM_SPEED_KMH
+                    and JAM_Y_MIN <= y <= JAM_Y_MAX
+                    and JAM_X_MIN <= x <= JAM_X_MAX):
+                edges.add(edge)
+    return edges
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -121,6 +151,13 @@ def main() -> int:
     print(f"  → Rerouting trigger: T={t_alert:.0f}s (first JAM_DETECTED_FROM at RSU=12)")
     print()
 
+    # ── Pre-seed jam edges from previous SUMO speed log ──────────────────────
+    jam_edges: set[str] = preseed_jam_edges(SPEEDLOG)
+    print(f"Pre-seeded {len(jam_edges)} jam edge(s) from speed log:")
+    if jam_edges:
+        print(f"  {sorted(jam_edges)}")
+    print()
+
     # ── Start SUMO ────────────────────────────────────────────────────────────
     try:
         import traci
@@ -139,7 +176,7 @@ def main() -> int:
     print(f"Launching SUMO: {' '.join(sumo_cmd)}")
     traci.start(sumo_cmd, port=args.port)
 
-    jam_edges: set[str]         = set()   # discovered dynamically in jam zone
+    # jam_edges pre-seeded above from speedlog; more edges added dynamically
     reroute_events: list[dict]  = []
     rerouted: set[str]          = set()   # veh_ids already handled
     alert_applied               = False
@@ -150,13 +187,17 @@ def main() -> int:
             t        = traci.simulation.getTime()
             vehicles = traci.vehicle.getIDList()
 
-            # ── Discover jam edges dynamically ────────────────────────────────
+            # ── Discover additional jam edges dynamically (speed-gated) ──────
+            # Only add an edge when the vehicle is actually slow on it —
+            # this prevents bypass/residential roads from entering the set.
             for veh_id in vehicles:
-                x, y = traci.vehicle.getPosition(veh_id)
-                edge  = traci.vehicle.getRoadID(veh_id)
+                x, y   = traci.vehicle.getPosition(veh_id)
+                edge   = traci.vehicle.getRoadID(veh_id)
+                spd_ms = traci.vehicle.getSpeed(veh_id)
                 if (not edge.startswith(":")
                         and JAM_Y_MIN <= y <= JAM_Y_MAX
-                        and JAM_X_MIN <= x <= JAM_X_MAX):
+                        and JAM_X_MIN <= x <= JAM_X_MAX
+                        and spd_ms * 3.6 < JAM_SPEED_KMH):
                     jam_edges.add(edge)
 
             # ── Apply / remove speed cap ──────────────────────────────────────
