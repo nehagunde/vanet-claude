@@ -3,18 +3,21 @@
 rerouter_v2.py — Phase 4: NS-3-alert-driven rerouting.
 
 Reads output/v2/alerts.log produced by the NS-3 802.11p simulation.
-Looks for the RELAY_SENT event (RSU=12 fired backhaul relay at BHPV quorum)
-and uses its timestamp as the "alert received" time for approaching vehicles.
+Uses the FIRST JAM_DETECTED_FROM event at RSU=12 (BHPV) as the rerouting
+trigger.  This is the earliest NS-3-observable signal that the BHPV jam
+exists — approximately T=91 s — which is before veh_00 (approaching from
+Old Gajuwaka) enters the jam zone at T≈134 s.
 
 At that simulation time every vehicle whose remaining route still contains
 a jam edge is rerouted via SUMO TraCI.  Vehicles already ON a jam edge are
 skipped (they are already stuck).
 
-Why RELAY_SENT rather than JAM_ALERT_RECV:
-    The alert was broadcast by RSU=11 (New Gajuwaka) at T=245 s.  No OBU
-    logged a JAM_ALERT_RECV because every vehicle had already passed RSU=11's
-    radio range by that time.  RELAY_SENT is the earliest moment the V2I
-    system actually produced a warning, so it is used as the rerouting trigger.
+Why FIRST_JAM_DETECTED rather than RELAY_SENT (T=245):
+    At T=245 all approaching vehicles (veh_00, veh_01) have already passed
+    through BHPV — detection latency exceeded approach time.  The first
+    JAM_DETECTED_FROM at RSU=12 (T≈91 s) is the earliest actionable NS-3
+    signal and catches veh_00 approximately 43 s before it enters the jam.
+    The human-readable alert message is taken from the later RELAY_SENT line.
 
 Outputs:
     output/v2/reroute_log.json
