@@ -97,3 +97,57 @@ bash scripts/run_mock.sh
 ```
 
 If `QUORUM_REACHED` appears exactly once (not repeated every beacon), Phase 2 is working correctly.
+
+---
+
+## Phase 3 — RSU-to-RSU Wired Backhaul Relay  ✅
+
+### What changed
+
+| File | Change |
+|---|---|
+| `sim/ns3/jam-alert-app.h` | Added `SetBackhaulPeer()`; `m_hasBkPeer`, `m_bkPeerAddr`, `m_bkPort`, `m_bkTxSocket`, `m_bkRxSocket`; `HandleBackhaulRead()`, `SendBackhaulAlert()`; `m_cntSent[3]`, `m_cntRecv[3]` |
+| `sim/ns3/jam-alert-app.cc` | `StartApplication()`: RSUs create `bkRxSocket` (always) and `bkTxSocket` (if peer configured). `HandleRead()`: quorum now calls `SendBackhaulAlert()` instead of 802.11p direct. `HandleBackhaulRead()`: receives relay, rebroadcasts over 802.11p. `StopApplication()`: logs STATS line for delivery ratio. OBU JAM_ALERT reception logged with `JAM_ALERT_RECV`. |
+| `sim/ns3/vanet-scenario.cc` | Added `#include "ns3/point-to-point-module.h"`; PointToPoint links between adjacent RSU pairs (100 Mbps, 2 ms); subnet 10.2.<i>.0/30 per pair; `SetBackhaulPeer()` called on each RSU with its approach-side peer IP; default logFile → output/v2/alerts.log |
+
+### How to rebuild and run
+
+```bash
+cp /home/kali/vanet_claude/sim/ns3/jam-alert-app.h   /home/kali/ns-3-dev/scratch/vanet/
+cp /home/kali/vanet_claude/sim/ns3/jam-alert-app.cc  /home/kali/ns-3-dev/scratch/vanet/
+cp /home/kali/vanet_claude/sim/ns3/vanet-scenario.cc /home/kali/ns-3-dev/scratch/vanet/
+cd /home/kali/ns-3-dev && ./ns3 build
+cd /home/kali/vanet_claude && bash scripts/run_mock.sh
+```
+
+### Log lines that prove the relay reached veh_00 and veh_01
+
+**1. Quorum at BHPV RSU (node 12) — relay sent over wired backhaul:**
+```
+[T=93.0] RSU=12 QUORUM_REACHED vehicles=[3,5,7]
+[T=93.0] RSU=12 RELAY_SENT PEER=10.2.1.1 MSG="Take alternate route at New Gajuwaka, jam detected at BHPV Junction"
+```
+
+**2. New Gajuwaka RSU (node 11) receives relay and rebroadcasts over 802.11p:**
+```
+[T=93.0] RSU=11 RELAY_RECV FROM_RSU=12 MSG="Take alternate route at New Gajuwaka, jam detected at BHPV Junction"
+[T=93.0] NODE=11 SENT=JAM_ALERT MSG="Take alternate route at New Gajuwaka, jam detected at BHPV Junction"
+```
+
+**3. veh_00 (node 0) and veh_01 (node 1) receive the 802.11p warning from RSU 11:**
+```
+[T=93.x] OBU=0 JAM_ALERT_RECV FROM_RSU=11 MSG="Take alternate route at New Gajuwaka, jam detected at BHPV Junction"
+[T=93.x] OBU=1 JAM_ALERT_RECV FROM_RSU=11 MSG="Take alternate route at New Gajuwaka, jam detected at BHPV Junction"
+```
+
+**4. Delivery ratio — STATS line at end of simulation for each node:**
+```
+[T=600.0] NODE=0 STATS SENT_BEACON=600 SENT_JAM_DETECTED=0 SENT_JAM_ALERT=0 RECV_BEACON=... RECV_JAM_DETECTED=0 RECV_JAM_ALERT=1
+```
+`RECV_JAM_ALERT=1` on veh_00 / veh_01 confirms the warning was delivered.
+
+To compute delivery ratio:
+```bash
+grep "JAM_ALERT_RECV" output/v2/alerts.log | wc -l   # OBUs that got warned
+grep "SENT=JAM_ALERT" output/v2/alerts.log | wc -l    # total JAM_ALERTs sent
+```

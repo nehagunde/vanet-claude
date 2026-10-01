@@ -298,9 +298,11 @@ int main(int argc, char* argv[]) {
 
     // ── Run ───────────────────────────────────────────────────────────────────
     std::cout << "Starting NS-3 simulation for " << simTime << " s\n";
-    std::cout << "  OBU nodes : 0 – " << (nObu - 1) << "\n";
-    std::cout << "  RSU nodes : 10 – " << (10 + nRsu - 1) << "\n";
-    std::cout << "  Log       : " << logFile << "\n\n";
+    std::cout << "  OBU nodes  : 0 – " << (nObu - 1) << "\n";
+    std::cout << "  RSU nodes  : 10 – " << (10 + nRsu - 1) << "\n";
+    std::cout << "  802.11p port : " << port << "\n";
+    std::cout << "  Backhaul port: " << bkPort << "\n";
+    std::cout << "  Log          : " << logFile << "\n\n";
 
     Simulator::Stop(Seconds(simTime));
     Simulator::Run();
