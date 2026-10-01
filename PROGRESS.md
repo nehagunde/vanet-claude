@@ -163,3 +163,69 @@ To compute delivery ratio:
 grep "JAM_ALERT_RECV" output/v2/alerts.log | wc -l   # OBUs that got warned
 grep "SENT=JAM_ALERT" output/v2/alerts.log | wc -l    # total JAM_ALERTs sent
 ```
+
+---
+
+## Phase 4 — NS-3-Alert-Driven Rerouting  ✅
+
+### Network topology finding
+`corridor.net.xml` has an alternate bypass around the BHPV jam (`544537085#3`, Y=3711–3996):
+
+```
+jam entry (Y=3711) → 548058730#1 (residential west) → 548058730#2,#3 →
+7242427550 (Y=3777) → -883679852 (service road north) →
+8218529267 → -883679850#2 → -883679850#1 → -883679850#0 →
+jam exit (Y=3996) → 544537085#4 continues north
+```
+Road types: `highway.residential` + `highway.service` — passenger cars allowed.
+SUMO Dijkstra finds this path when `544537085#3` is inflated to 99999 s.
+
+### Alert trigger
+No `JAM_ALERT_RECV` in NS-3 log (vehicles past RSU=01 radio range by T=245 s).
+Option A applied: use `RELAY_SENT T=245` as rerouting trigger for all vehicles
+still approaching the jam (current edge not in jam_edges but upcoming route is).
+
+### What changed
+
+| File | Change |
+|---|---|
+| `data_node/rerouter_v2.py` | New script: parses `output/v2/alerts.log` for RELAY_SENT, runs SUMO, at T≥245 inflates jam edge travel time, reroutes approaching vehicles, logs to `output/v2/reroute_log.json` |
+| `scripts/run_mock.sh` | Added Phase 4b call to `rerouter_v2.py` before legacy rerouter |
+
+### How to run
+
+```bash
+cd /home/kali/vanet_claude
+bash scripts/run_mock.sh
+```
+
+Or just the rerouter step alone:
+```bash
+python3 data_node/rerouter_v2.py
+cat output/v2/reroute_log.json
+```
+
+### Expected output/v2/reroute_log.json structure
+```json
+{
+  "alert": { "t_alert_s": 245.0, "alert_source": "RELAY_SENT RSU=12", ... },
+  "jam_edges": ["544537085#3", ...],
+  "reroute_events": [
+    {
+      "t_s": 245, "veh_id": "veh_07",
+      "old_route": [...jam edge included...],
+      "new_route": [...bypass via residential/service roads...],
+      "avoided_jam": true
+    }
+  ],
+  "summary": { "total_vehicles_rerouted": N, "vehicles_avoided_jam": N, ... }
+}
+```
+
+### Log lines that prove Phase 4 works
+```
+[T=245s] NS-3 RELAY alert — scanning N vehicle(s), M jam edge(s)
+  veh_07: REROUTED  old=X edges  new=Y edges  [AVOIDED JAM]
+  veh_08: REROUTED  old=X edges  new=Y edges  [AVOIDED JAM]
+  veh_02: SKIP — already on jam edge (544537085#3)
+```

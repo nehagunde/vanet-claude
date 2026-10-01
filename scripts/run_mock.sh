@@ -46,8 +46,13 @@ mkdir -p /home/kali/vanet_claude/output/v2
 cd /home/kali/vanet_claude
 echo ""
 
-# ── PHASE 4b — Live rerouting demo ───────────────────────────────────────────
-echo "[PHASE 4b] Running live rerouter (SUMO + TraCI) ..."
+# ── PHASE 4b — NS-3-alert-driven rerouter (v2, reads output/v2/alerts.log) ───
+echo "[PHASE 4b] Running NS-3-alert-driven rerouter ..."
+python3 data_node/rerouter_v2.py
+echo ""
+
+# ── PHASE 4b-legacy — Original SUMO-based rerouter (keeps output/reroute_log.json) ─
+echo "[PHASE 4b-legacy] Running original SUMO-based rerouter ..."
 python3 data_node/rerouter.py --mock
 echo ""
 
