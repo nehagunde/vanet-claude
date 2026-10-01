@@ -187,6 +187,7 @@ void JamAlertApp::SendBeacon() {
     Ptr<Packet> pkt = Create<Packet>(
         reinterpret_cast<const uint8_t*>(&msg), sizeof(msg));
     m_txSocket->Send(pkt);
+    m_cntSent[static_cast<uint8_t>(type)]++;
 
     std::ostringstream oss;
     oss << "[T=" << std::fixed << std::setprecision(1)
@@ -219,6 +220,7 @@ void JamAlertApp::SendAlert(MsgType type, const std::string& alertMsg) {
     Ptr<Packet> pkt = Create<Packet>(
         reinterpret_cast<const uint8_t*>(&msg), sizeof(msg));
     m_txSocket->Send(pkt);
+    m_cntSent[JAM_ALERT]++;
 
     std::ostringstream oss;
     oss << "[T=" << std::fixed << std::setprecision(1)
@@ -243,9 +245,10 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
         VanetMsg msg{};
         pkt->CopyData(reinterpret_cast<uint8_t*>(&msg), sizeof(msg));
 
-        // Null-terminate string fields defensively
         msg.edge[31]      = '\0';
         msg.alert_msg[63] = '\0';
+
+        if (msg.msg_type < 3) m_cntRecv[msg.msg_type]++;
 
         const char* typeStr = "BEACON";
         if (msg.msg_type == JAM_DETECTED) typeStr = "JAM_DETECTED";
@@ -261,6 +264,17 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
             << " EDGE="  << msg.edge
             << " MSG=\"" << msg.alert_msg << "\"";
         LogEvent(oss.str());
+
+        // OBU receiving a JAM_ALERT — log which RSU warned it
+        if (!m_isRsu && msg.msg_type == JAM_ALERT) {
+            std::ostringstream warn;
+            warn << "[T=" << std::fixed << std::setprecision(1)
+                 << Simulator::Now().GetSeconds()
+                 << "] OBU=" << m_nodeId
+                 << " JAM_ALERT_RECV FROM_RSU=" << msg.sender_id
+                 << " MSG=\"" << msg.alert_msg << "\"";
+            LogEvent(warn.str());
+        }
 
         // RSU jam-aggregation logic — count DISTINCT vehicles in 30-s window
         if (m_isRsu && msg.msg_type == JAM_DETECTED) {
@@ -291,7 +305,6 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
             if (!m_jamFired && m_seenSenders.size() >= JAM_VEH_THRESHOLD) {
                 m_jamFired = true;
 
-                // Log QUORUM_REACHED with the vehicle list
                 std::ostringstream qlog;
                 qlog << "[T=" << std::fixed << std::setprecision(1) << now
                      << "] RSU=" << m_nodeId
@@ -308,9 +321,78 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
                 std::string alertStr = m_alertMsg.empty()
                     ? "Take alternate route: jam detected ahead"
                     : m_alertMsg;
-                SendAlert(JAM_ALERT, alertStr);
+
+                // Phase 3: relay over backhaul if wired peer is configured;
+                // otherwise broadcast over 802.11p directly.
+                if (m_hasBkPeer) {
+                    SendBackhaulAlert(alertStr);
+                } else {
+                    SendAlert(JAM_ALERT, alertStr);
+                }
             }
         }
+    }
+}
+
+// ── Phase 3: wired backhaul relay ────────────────────────────────────────────
+
+void JamAlertApp::SendBackhaulAlert(const std::string& alertMsg) {
+    if (!m_bkTxSocket) return;
+
+    Ptr<MobilityModel> mob = GetNode()->GetObject<MobilityModel>();
+    Vector pos = mob ? mob->GetPosition() : Vector(0, 0, 0);
+
+    VanetMsg msg{};
+    msg.msg_type  = static_cast<uint8_t>(JAM_ALERT);
+    msg.sender_id = m_nodeId;
+    msg.speed_kmh = 0.0f;
+    msg.pos_x     = static_cast<float>(pos.x);
+    msg.pos_y     = static_cast<float>(pos.y);
+    std::strncpy(msg.edge,      "BKH",          sizeof(msg.edge) - 1);
+    std::strncpy(msg.alert_msg, alertMsg.c_str(), sizeof(msg.alert_msg) - 1);
+
+    Ptr<Packet> pkt = Create<Packet>(
+        reinterpret_cast<const uint8_t*>(&msg), sizeof(msg));
+    m_bkTxSocket->Send(pkt);
+    m_cntSent[JAM_ALERT]++;
+
+    std::ostringstream oss;
+    oss << "[T=" << std::fixed << std::setprecision(1)
+        << Simulator::Now().GetSeconds()
+        << "] RSU=" << m_nodeId
+        << " RELAY_SENT PEER=" << m_bkPeerAddr
+        << " MSG=\"" << alertMsg << "\"";
+    LogEvent(oss.str());
+}
+
+void JamAlertApp::HandleBackhaulRead(Ptr<Socket> socket) {
+    Ptr<Packet> pkt;
+    Address     from;
+    while ((pkt = socket->RecvFrom(from)) != nullptr) {
+        if (pkt->GetSize() < sizeof(VanetMsg)) continue;
+
+        VanetMsg msg{};
+        pkt->CopyData(reinterpret_cast<uint8_t*>(&msg), sizeof(msg));
+        msg.edge[31]      = '\0';
+        msg.alert_msg[63] = '\0';
+
+        std::ostringstream oss;
+        oss << "[T=" << std::fixed << std::setprecision(1)
+            << Simulator::Now().GetSeconds()
+            << "] RSU=" << m_nodeId
+            << " RELAY_RECV FROM_RSU=" << msg.sender_id
+            << " MSG=\"" << msg.alert_msg << "\"";
+        LogEvent(oss.str());
+
+        // Rebroadcast over 802.11p — use embedded alert text if present,
+        // else fall back to this RSU's own configured alert message.
+        std::string alertStr(msg.alert_msg);
+        if (alertStr.empty()) {
+            alertStr = m_alertMsg.empty()
+                ? "Take alternate route: jam detected ahead"
+                : m_alertMsg;
+        }
+        SendAlert(JAM_ALERT, alertStr);
     }
 }
 

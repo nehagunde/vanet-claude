@@ -40,6 +40,7 @@
 #include "ns3/internet-module.h"
 #include "ns3/mobility-module.h"
 #include "ns3/network-module.h"
+#include "ns3/point-to-point-module.h"
 #include "ns3/wifi-module.h"
 #include "ns3/yans-wifi-helper.h"
 
@@ -124,9 +125,10 @@ int main(int argc, char* argv[]) {
     std::string rsuFile =
         "/home/kali/vanet_claude/sim/bridge/rsu_static.json";
     std::string logFile =
-        "/home/kali/vanet_claude/output/alerts.log";
+        "/home/kali/vanet_claude/output/v2/alerts.log";
     double simTime = 600.0;
-    uint16_t port  = 7777;
+    uint16_t port   = 7777;
+    uint16_t bkPort = 7778;  // wired RSU-to-RSU backhaul port
 
     CommandLine cmd(__FILE__);
     cmd.AddValue("mobilityFile", "Path to mobility.ns2",   mobilityFile);
@@ -134,6 +136,7 @@ int main(int argc, char* argv[]) {
     cmd.AddValue("logFile",      "Path to output alerts.log", logFile);
     cmd.AddValue("simTime",      "Simulation duration (s)", simTime);
     cmd.AddValue("port",         "UDP port for VANET messages", port);
+    cmd.AddValue("bkPort",       "UDP port for RSU wired backhaul", bkPort);
     cmd.Parse(argc, argv);
 
     // ── Logging ───────────────────────────────────────────────────────────────
@@ -190,6 +193,36 @@ int main(int argc, char* argv[]) {
     Ipv4AddressHelper ipv4;
     ipv4.SetBase("10.1.0.0", "255.255.0.0");
     Ipv4InterfaceContainer ifaces = ipv4.Assign(devices);
+
+    // ── Wired backhaul between adjacent RSUs (Phase 3) ────────────────────────
+    // Each pair rsu[i]—rsu[i+1] gets a PointToPoint link on 10.2.<i>.0/30.
+    // When rsu[j] reaches quorum it sends over backhaul to rsu[j-1] (approach side).
+    PointToPointHelper p2p;
+    p2p.SetDeviceAttribute("DataRate", StringValue("100Mbps"));
+    p2p.SetChannelAttribute("Delay",   StringValue("2ms"));
+
+    // rsuBkPeerAddr[i] = IP of rsu[i-1] on the link connecting rsu[i-1]—rsu[i]
+    // (rsu[i] sends its backhaul JAM_ALERT to this address)
+    std::vector<Ipv4Address> rsuBkPeerAddr(nRsu, Ipv4Address("0.0.0.0"));
+
+    Ipv4AddressHelper bkIp;
+    for (uint32_t i = 0; i + 1 < nRsu; ++i) {
+        NodeContainer pair(rsuNodes.Get(i), rsuNodes.Get(i + 1));
+        NetDeviceContainer bkDev = p2p.Install(pair);
+
+        // Subnet 10.2.<i>.0/30 → rsu[i]=.1, rsu[i+1]=.2
+        std::string baseAddr = "10.2." + std::to_string(i) + ".0";
+        bkIp.SetBase(baseAddr.c_str(), "255.255.255.252");
+        Ipv4InterfaceContainer bkIface = bkIp.Assign(bkDev);
+
+        // rsu[i+1] relays toward rsu[i], so its backhaul peer = rsu[i]'s P2P IP
+        rsuBkPeerAddr[i + 1] = bkIface.GetAddress(0);
+
+        std::cout << "  Backhaul link " << i << ": rsu[" << i
+                  << "] (" << bkIface.GetAddress(0)
+                  << ") <--100Mbps/2ms--> rsu[" << (i + 1)
+                  << "] (" << bkIface.GetAddress(1) << ")\n";
+    }
 
     // ── OBU mobility — ns2 waypoint trace ────────────────────────────────────
     Ns2MobilityHelper ns2mob(mobilityFile);
@@ -253,6 +286,10 @@ int main(int argc, char* argv[]) {
         }
         Ptr<JamAlertApp> app = CreateObject<JamAlertApp>();
         app->Setup(10 + i, /*isRsu=*/true, logFile, port, alertMsg);
+        // Phase 3: configure wired backhaul toward the approach-side RSU
+        if (rsuBkPeerAddr[i] != Ipv4Address("0.0.0.0")) {
+            app->SetBackhaulPeer(rsuBkPeerAddr[i], bkPort);
+        }
         rsuNodes.Get(i)->AddApplication(app);
         app->SetStartTime(Seconds(0.0));
         app->SetStopTime(Seconds(simTime));
