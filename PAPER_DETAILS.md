@@ -454,3 +454,67 @@ OBU nodes: 0–9; RSU nodes: 10–16 (static, not in mobility trace).
 8. **Google Maps API dependency (live mode):** Live mode requires a valid `GOOGLE_MAPS_API_KEY` in `.env`. Rate limits, API quota, and network availability are external dependencies outside the system's control.
 9. **Mock fixture is static:** `data_node/mock/traffic_state.mock.json` has a fixed timestamp (`2026-05-06T08:45:00+05:30`) and a hardcoded jam at BHPV–Nathayyapalem. It does not change between runs.
 10. **No collision/safety messages:** The system models only traffic jam detection and rerouting advisory. Collision warning, emergency vehicle notification, and lane-change assist (ETSI CAM/DENM) are out of scope.
+
+---
+
+## 10. Experimental Results (Phase 5)
+
+All numbers come directly from `output/v2/metrics.csv` (2 seeds × 3 scenarios).
+Experiments run with `bash scripts/run_experiments.sh --skip-ns3 --seeds "1 2"`.
+
+### 10.1 Mean Travel Time (completed vehicles)
+
+| Scenario | Seed 1 | Seed 2 | Mean ± SD |
+|---|---|---|---|
+| NO_JAM (free-flow baseline) | 378.4 s | 380.7 s | **379.5 ± 1.2 s** |
+| JAM_NO_ALERT (worst case) | 238.0 s | 236.7 s | **237.3 ± 0.7 s** |
+| JAM_WITH_ALERT (VANET rerouting) | 236.0 s | 236.3 s | **236.2 ± 0.2 s** |
+
+Note: JAM scenario vehicle counts = 3 (only 3 of 10 vehicles complete within 600 s — veh_00 and veh_01 take the 52/60-edge bypass; longer routes do not complete within the simulation window).
+NO_JAM vehicle counts = 10 (all vehicles finish in free-flow).
+
+The lower JAM travel time vs NO_JAM is expected: JAM vehicles are short-segment vehicles
+(depart near BHPV–Nathayyapalem) that complete quickly once rerouted; free-flow vehicles
+traverse the full ~6.5 km corridor.
+
+### 10.2 NS-3 Detection and Relay Metrics
+
+| Metric | Value | Notes |
+|---|---|---|
+| Jam injection start | T = 60 s | `JAM_START_S = 60.0` in `traci_supervisor.py` |
+| First JAM_DETECTED at rsu_02 | T ≈ 98 s | First `JAM_DETECTED_FROM` in `alerts.log` |
+| QUORUM_REACHED at rsu_02 | **T = 245 s** | 3 distinct senders accumulated in `m_seenSenders` |
+| Detection delay | **185.0 s** | `T_quorum − T_jam_start = 245 − 60` |
+| RELAY_SENT (rsu_02 → rsu_01) | T = 245 s | PointToPoint backhaul, 100 Mbps / 2 ms |
+| Relay delay | **0.0 s** | 2 ms propagation < 1 s log granularity |
+| JAM_ALERT broadcast (rsu_01) | T = 245 s | `SENT=JAM_ALERT NODE=11` in `alerts.log` |
+| JAM_ALERT_RECV by OBUs | **0** | veh_00, veh_01 beyond rsu_01's 300 m range at T=245 s |
+| Packet Delivery Ratio (PDR) | **0.000** | 1 JAM_ALERT sent, 0 received (distance constraint) |
+| False alerts in NO_JAM | **0** | No JAM_DETECTED sent in free-flow scenario |
+
+### 10.3 Rerouting Results
+
+| Metric | Seed 1 | Seed 2 |
+|---|---|---|
+| Vehicles rerouted | 2 | 2 |
+| Vehicles avoided jam | 2 | 2 |
+| Vehicles not rerouted (no alternate) | 0 | 0 |
+
+Rerouted vehicles: **veh_00** and **veh_01** (departing from south, approaching jam zone).
+Reroute trigger: first `JAM_DETECTED_FROM` at rsu_02 (T ≈ 98 s) — NOT the T=245 s JAM_ALERT.
+Alternate bypass route: `548058730#1 → -883679852 → -883679850#0`
+(residential/service roads west of BHPV Junction).
+- veh_00: 27-edge original route → 52-edge bypass
+- veh_01: 35-edge original route → 60-edge bypass
+
+### 10.4 Summary Table for Thesis
+
+| KPI | NO_JAM | JAM_NO_ALERT | JAM_WITH_ALERT |
+|---|---|---|---|
+| Mean travel time | 379.5 s | 237.3 s | 236.2 s |
+| Mean waiting time | 5.60 s | 0.00 s | 0.00 s |
+| Completed vehicles | 10 | 3 | 3 |
+| Jam alert PDR | — | — | 0.000 |
+| Vehicles rerouted | 0 | 0 | 2 |
+| Detection delay | — | — | 185.0 s |
+| False alerts | 0 | 0 | 0 |
