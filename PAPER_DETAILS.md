@@ -35,9 +35,10 @@ Phase 5  : Visualiser + GUI → vanet_summary_*.html, vanet_gui_*.html
 | NS-3 scenario | `sim/ns3/vanet-scenario.cc` | Creates 10 OBU + 7 RSU nodes; installs 802.11p radio; runs JamAlertApp; writes `alerts.log` |
 | JamAlertApp | `sim/ns3/jam-alert-app.cc/.h` | OBUs broadcast BEACONs every 1 s; RSUs aggregate and fire JAM_ALERT when threshold met |
 | Jam detector | `data_node/jam_detector.py` | Offline post-processing of `speed_log.json`; applies detection rule; writes `jam_report.json` |
-| Rerouter | `data_node/rerouter.py` | Re-runs SUMO via TraCI (port 8814); detects jammed edges; calls `rerouteTraveltime` (Dijkstra) on approaching vehicles |
+| Rerouter (v1) | `data_node/rerouter.py` | Legacy rerouter — re-runs SUMO via TraCI (port 8814); detects jammed edges; calls `rerouteTraveltime` on approaching vehicles |
+| Rerouter (v2) | `data_node/rerouter_v2.py` | Phase 5+ rerouter — same logic as v1 but accepts `--seed`, `--tripinfo`, `--alerts-log`, `--reroute-log` CLI flags; default TraCI port 8815 |
 | Visualiser | `scripts/visualise.py` | Reads output files; writes `vanet_summary_*.html` dashboard |
-| GUI visualiser | `scripts/gui_visualiser.py` | Animated canvas showing RSU relay chain, SENDER/RECEIVER badges, alert banner |
+| GUI visualiser | `scripts/gui_visualiser.py` | Animated canvas; SENDER/RECEIVER badges, relay arrows, alert banner driven **exclusively** by events parsed from `output/v2/alerts.log` (no heuristic speed logic) |
 
 ### Node Numbering (NS-3)
 
@@ -57,14 +58,17 @@ Defined in `sim/ns3/jam-alert-app.h`:
 ```
 BEACON_INTERVAL_S   = 1.0 s      // OBU broadcasts every 1 second
 JAM_SPEED_THRESHOLD = 5.0 km/h   // OBU reports JAM_DETECTED if speed < 5 km/h
-JAM_VEH_THRESHOLD   = 3          // RSU fires JAM_ALERT when >= 3 vehicles report slow
-JAM_TIME_THRESHOLD  = 30.0 s     // all 3 reports must arrive within 30-second window
+JAM_VEH_THRESHOLD   = 3          // RSU fires JAM_ALERT when >= 3 distinct vehicles report slow
 ```
 
-**RSU aggregation logic (jam-alert-app.cc lines 208–232):**
-- RSU counts incoming JAM_DETECTED messages
-- If `(now - first_slow_at) <= 30.0 s` and `slow_count >= 3`: fire JAM_ALERT, reset counter
-- If window expired (>30 s): restart counter from 1
+Note: `JAM_TIME_THRESHOLD` (30 s window) was **removed** in Phase 3 (see fix below).
+
+**RSU aggregation logic (jam-alert-app.cc — Phase 3 fix, persistent accumulation):**
+- RSU maintains `m_seenSenders` (a `std::set<uint32_t>`) that accumulates the NS-3 node IDs of
+  every unique vehicle that has sent at least one JAM_DETECTED message.
+- The 30-second expiry block was removed from `HandleRead()`.
+- When `m_seenSenders.size() >= 3`: fire exactly one JAM_ALERT and stop listening.
+- This ensures quorum fires once — based on **number of distinct senders**, not timing window.
 
 **Layer 2 — Python offline detector (post-simulation):**
 Defined in `data_node/jam_detector.py`:
@@ -167,25 +171,35 @@ Step 2  [t = 60 s]
         TraCI supervisor sets max speed = 1.2 m/s on jam-zone edges (BHPV–Nathayyapalem).
         Vehicles on those edges begin slowing below 5 km/h.
 
-Step 3  [t ≈ 90 s]
-        Slow vehicles have been below 5 km/h for > 30 consecutive seconds.
-        NS-3 OBU nodes broadcast JAM_DETECTED (msg_type=1) to all within 300 m radio range.
-        → rsu_02 (BHPV, NS-3 node 12) receives JAM_DETECTED from ≥ 3 vehicles.
+Step 3  [t ≈ 91 s – 350 s]
+        OBU vehicles slowed to < 5 km/h by jam (jam injected at T=60 s, cap 1.2 m/s).
+        NS-3 OBU nodes broadcast JAM_DETECTED (msg_type=1) every 1 s while slow.
+        rsu_02 (BHPV Junction, NS-3 node 12) receives JAM_DETECTED from each OBU in range.
+        First JAM_DETECTED_FROM logged at rsu_02: T ≈ 98 s.
 
-Step 4  [RSU aggregation]
-        rsu_02 counts JAM_DETECTED messages within 30-second window.
-        When slow_count >= 3: rsu_02 broadcasts JAM_ALERT (msg_type=2) over 802.11p.
+Step 4  [RSU aggregation — persistent accumulation, t = 245 s]
+        rsu_02 accumulates distinct senders in `m_seenSenders` (std::set, no time window).
+        When `m_seenSenders.size() >= 3`: QUORUM_REACHED fires at T = 245 s.
+        rsu_02 sends JAM_ALERT (msg_type=2) over 802.11p to local OBUs.
+        rsu_02 also sends JAM_ALERT to rsu_01 via PointToPoint backhaul (RELAY_SENT at T=245 s).
         JAM_ALERT payload: {msg_type=2, sender_id=12, alert_msg="Traffic jam detected..."}
 
-Step 5  [RSU-to-RSU relay]
-        rsu_01 (New Gajuwaka, NS-3 node 11) receives JAM_ALERT from rsu_02.
-        rsu_01 re-broadcasts JAM_ALERT to all nodes within its 300 m range.
-        → Approaching vehicles V00, V01 (near New Gajuwaka) receive the alert.
+Step 5  [RSU-to-RSU PointToPoint relay, T = 245 s]
+        rsu_02 (NS-3 node 12) relays to rsu_01 (New Gajuwaka, NS-3 node 11) over
+        dedicated PointToPoint link: 100 Mbps, 2 ms delay; subnet 10.2.1.0/30.
+        Relay delay: 2 ms (recorded as 0.0 s due to 1-second log granularity).
+        rsu_01 broadcasts JAM_ALERT over 802.11p within its 300 m range.
+        At T=245 s, approaching vehicles veh_00 and veh_01 are beyond rsu_01's 300 m range
+        (they departed at T=0 and T=13.3 s from south; no JAM_ALERT_RECV logged — PDR = 0.0).
 
-Step 6  [Vehicle rerouting]
-        Python rerouter (rerouter.py) detects jammed edges via TraCI.
+Step 6  [Vehicle rerouting, trigger T ≈ 98 s]
+        Python rerouter_v2.py runs a separate SUMO instance (TraCI port 8815).
+        Rerouting trigger: first `JAM_DETECTED_FROM` event at rsu_02 (T ≈ 98 s) from alerts.log.
+        (NOT the JAM_ALERT broadcast at T=245 s — the rerouter reads alerts.log directly.)
         Calls traci.edge.adaptTraveltime(jammed_edge, 9999.0) to inflate cost.
         Calls traci.vehicle.rerouteTraveltime(veh_id) → SUMO Dijkstra finds alternate path.
+        veh_00: original 27-edge route → rerouted to 52-edge bypass (residential/service roads west of BHPV).
+        veh_01: original 35-edge route → rerouted to 60-edge bypass.
         Rerouting cooldown: same vehicle not rerouted again within 60 seconds.
 
 Step 7  [t = 350 s]
@@ -247,8 +261,9 @@ seg_05_06 (Gopalapatnam → NAD Junction)     → 1 vehicle   (ratio 1.15, light
 Total: 10 vehicles
 ```
 
-**Rerouter simulation (rerouter.py, runs independently):**
+**Rerouter v1 simulation (rerouter.py, legacy):**
 ```
+TraCI port     = 8814
 SIM_DURATION_S = 600 s
 STEP_S         = 1.0 s
 Reroute cooldown: 60 s per vehicle
@@ -256,6 +271,17 @@ Jammed edge travel time cost: 9999.0 s (to force Dijkstra avoidance)
 JAM_SPEED_KMH  = 5.0   (rerouter detection threshold)
 JAM_MIN_VEHICLES = 3
 JAM_MIN_SECONDS  = 30
+```
+
+**Rerouter v2 (rerouter_v2.py, Phase 5+ — used in experiments):**
+```
+TraCI port (default)  = 8815
+--seed <int>          = SUMO random seed (forwarded to --seed)
+--tripinfo <path>     = SUMO tripinfo XML output path
+--alerts-log <path>   = input alerts.log (default: output/v2/alerts.log)
+--reroute-log <path>  = output reroute_log.json path (default: output/v2/reroute_log.json)
+Rerouting trigger     = first JAM_DETECTED_FROM event in alerts.log (T ≈ 98 s)
+All other logic identical to rerouter.py
 ```
 
 ---
@@ -385,6 +411,11 @@ OBU nodes: 0–9; RSU nodes: 10–16 (static, not in mobility trace).
 | `output/vanet_gui_mock.html` | `scripts/gui_visualiser.py` | Animated canvas: vehicles, RSUs, V2I arrows, RSU relay chain, alert banner |
 | `output/vanet_summary_live.html` | `scripts/visualise.py` | Same as mock but with live traffic data |
 | `output/vanet_gui_live.html` | `scripts/gui_visualiser.py` | Same as mock GUI but with live mode data |
+| `output/v2/alerts.log` | NS-3 (`vanet-scenario.cc`) | Phase 3+ alerts log — timestamped QUORUM_REACHED, RELAY_SENT, RELAY_RECV, JAM_ALERT events |
+| `output/v2/reroute_log.json` | `rerouter_v2.py` | Same structure as `output/reroute_log.json` but from v2 rerouter runs |
+| `output/v2/metrics.csv` | `scripts/compute_metrics.py` | Per-scenario per-seed: mean_duration_s, mean_waiting_s, vehicle_count, detection_delay_s, relay_delay_s, jam_alert_sent/recv, pdr, vehicles_rerouted, vehicles_avoided_jam, false_alerts |
+| `output/v2/experiments/` | `scripts/run_experiments.sh` | Per-scenario per-seed: tripinfo.xml, alerts.log, reroute_log.json, step logs |
+| `output/v2/plots/` | `scripts/compute_metrics.py` | 6 thesis-quality PNG plots (white background, 150 dpi) |
 
 **alerts.log entry format:**
 ```
