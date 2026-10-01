@@ -255,3 +255,63 @@ Alert fired at    : T=98s (first JAM_DETECTED_FROM RSU=12)
 The longer new routes (52 and 60 edges vs 27 and 35) confirm SUMO found
 the residential/service road bypass west of BHPV (`548058730#1` →
 `-883679852` → `-883679850#0`) rather than the direct NH-16 corridor.
+
+---
+
+## Phase 5 — Experiments and Metrics
+
+### What changed
+
+| File | Change |
+|---|---|
+| `sim/bridge/traci_supervisor.py` | Added `--seed` and `--tripinfo` args; both forwarded to SUMO command |
+| `data_node/rerouter_v2.py` | Added `--seed`, `--tripinfo`, `--alerts-log`, `--reroute-log` args; all override hard-coded paths/commands |
+| `scripts/run_experiments.sh` | **NEW** — 3 scenarios × 5 seeds; saves tripinfo + alerts.log + reroute_log per run |
+| `scripts/compute_metrics.py` | **NEW** — parses outputs, writes `output/v2/metrics.csv`, generates 6 thesis PNG plots |
+
+### How to run (Kali Linux)
+
+```bash
+cd /home/kali/vanet_claude
+
+# Full sweep (runs NS-3 for each seed — may take 20–30 min)
+bash scripts/run_experiments.sh
+
+# Quick test (skip NS-3, reuse existing alerts.log)
+bash scripts/run_experiments.sh --skip-ns3 --seeds "1 2"
+
+# Then compute metrics
+python3 scripts/compute_metrics.py
+```
+
+### Outputs
+
+```
+output/v2/experiments/
+  NO_JAM/seed_N/tripinfo.xml
+  JAM_NO_ALERT/seed_N/tripinfo.xml
+  JAM_WITH_ALERT/seed_N/tripinfo.xml
+  JAM_WITH_ALERT/seed_N/alerts.log
+  JAM_WITH_ALERT/seed_N/reroute_log.json
+
+output/v2/metrics.csv
+output/v2/plots/
+  travel_time_comparison.png   — all 3 scenarios bar chart
+  travel_time_b_vs_c.png       — (b) vs (c) with Δ annotation
+  waiting_time_comparison.png
+  detection_delay.png          — detect delay + relay delay
+  rerouting_summary.png        — rerouted / avoided per seed
+  packet_delivery_ratio.png    — sent vs recv JAM_ALERT per seed
+```
+
+### Metrics computed
+
+| Metric | Source |
+|---|---|
+| Avg travel time ± std (per scenario, over seeds) | tripinfo.xml duration |
+| Avg waiting time ± std | tripinfo.xml waitingTime |
+| Detection delay (Quorum − T=60) | JAM_WITH_ALERT alerts.log |
+| Relay delay (RELAY_SENT − Quorum) | JAM_WITH_ALERT alerts.log |
+| JAM_ALERT PDR (recv / sent) | alerts.log SENT=JAM_ALERT / JAM_ALERT_RECV |
+| Vehicles rerouted / avoided jam | reroute_log.json summary |
+| False alerts in NO_JAM | 0 by design (free-flow, no JAM_DETECTED transmitted) |
