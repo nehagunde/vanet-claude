@@ -3,28 +3,21 @@
  *
  * OBU behaviour
  * ─────────────
- *   Beacons start at departure time + nodeId * BEACON_STAGGER_S (Fix 1+2).
- *   Slow-second counting begins only after m_departTime (Fix 2).
- *   Once slowSeconds > 30 the OBU upgrades its next beacon to JAM_DETECTED.
+ *   Every BEACON_INTERVAL seconds the OBU reads its current position &
+ *   speed from the mobility model and broadcasts a BEACON (or
+ *   JAM_DETECTED if speed < JAM_SPEED_THRESHOLD km/h) to 255.255.255.255.
  *
- * RSU behaviour (Fix 3)
+ * RSU behaviour
  * ─────────────
- *   Rolling 30-second window: a sender is "active" only if its latest
- *   JAM_DETECTED arrived within the last JAM_WINDOW_S seconds.
- *   Quorum fires once when active_count >= JAM_VEH_THRESHOLD.
- *
- * Fix 4 — repeated alert
- * ─────────────
- *   Jam RSU (rsu_02) fires quorum, relays over backhaul to rsu_01, and also
- *   broadcasts JAM_ALERT locally over 802.11p.  It then sends a keepalive
- *   relay every RELAY_KEEPALIVE_INTERVAL_S while jam is still active.
- *   Alert RSU (rsu_01) broadcasts JAM_ALERT every ALERT_BROADCAST_INTERVAL_S
- *   after receiving the first relay; stops if no relay for RELAY_TIMEOUT_S.
- *   Each OBU logs JAM_ALERT_RECV only on its FIRST receipt.
+ *   The RSU only listens.  When it sees ≥ JAM_VEH_THRESHOLD vehicles
+ *   reporting < 5 km/h within a JAM_TIME_THRESHOLD-second window it
+ *   broadcasts a JAM_ALERT once (then resets its counter so it can fire
+ *   again if the jam continues).
  *
  * Logging
  * ───────
- *   Every sent/received event is appended to output/alerts.log in the format:
+ *   Every sent/received event is appended to output/alerts.log in the
+ *   format:
  *     [T=<sim_s>] NODE=<id> TYPE=<BEACON|JAM_DETECTED|JAM_ALERT>
  *              FROM=<sender> SPEED=<kmh> EDGE=<edge> MSG=<alert>
  */
@@ -106,13 +99,10 @@ void JamAlertApp::StartApplication() {
     m_txSocket->SetAllowBroadcast(true);
     m_txSocket->Connect(InetSocketAddress(Ipv4Address("255.255.255.255"), m_port));
 
-    // Fix 1+2: OBU beacons start at departure time + per-node stagger offset.
-    // This prevents simultaneous transmissions (collisions) and ensures no
-    // slow seconds are counted before the vehicle has actually departed in SUMO.
+    // OBUs beacon; RSUs only listen
     if (!m_isRsu) {
-        double startDelay = m_departTime + static_cast<double>(m_nodeId) * BEACON_STAGGER_S;
         m_beaconEvent = Simulator::Schedule(
-            Seconds(startDelay), &JamAlertApp::SendBeacon, this);
+            Seconds(0.0), &JamAlertApp::SendBeacon, this);
     }
 
     // RSU backhaul sockets (wired PointToPoint relay, port 7778)
@@ -138,8 +128,6 @@ void JamAlertApp::StartApplication() {
 
 void JamAlertApp::StopApplication() {
     Simulator::Cancel(m_beaconEvent);
-    Simulator::Cancel(m_broadcastEvent);
-    Simulator::Cancel(m_keepaliveEvent);
 
     // Log delivery-ratio summary for this node
     std::ostringstream stats;
@@ -165,8 +153,6 @@ void JamAlertApp::StopApplication() {
 // ── Transmission ──────────────────────────────────────────────────────────────
 
 void JamAlertApp::SendBeacon() {
-    double now = Simulator::Now().GetSeconds();
-
     Ptr<MobilityModel> mob = GetNode()->GetObject<MobilityModel>();
     Vector pos = mob ? mob->GetPosition() : Vector(0, 0, 0);
 
@@ -178,20 +164,15 @@ void JamAlertApp::SendBeacon() {
         speed_kmh = static_cast<float>(speed_ms * 3.6);
     }
 
-    // Fix 2: Only count slow seconds after vehicle has departed in SUMO.
-    // Before m_departTime the vehicle is stationary at its departure position
-    // in the NS-2 trace; counting those seconds would produce false JAM_DETECTED.
-    if (now >= m_departTime) {
-        if (speed_kmh < JAM_SPEED_THRESHOLD) {
-            m_slowSeconds++;
-        } else {
-            m_slowSeconds = 0;
-        }
+    // Count consecutive 1-second intervals below jam threshold
+    if (speed_kmh < JAM_SPEED_THRESHOLD) {
+        m_slowSeconds++;
+    } else {
+        m_slowSeconds = 0;
     }
 
     // Upgrade to JAM_DETECTED once the vehicle has been slow for > 30 s
-    MsgType type = (now >= m_departTime &&
-                    m_slowSeconds > static_cast<uint32_t>(JAM_TIME_THRESHOLD))
+    MsgType type = (m_slowSeconds > static_cast<uint32_t>(JAM_TIME_THRESHOLD))
                    ? JAM_DETECTED : BEACON;
 
     VanetMsg msg{};
@@ -209,7 +190,8 @@ void JamAlertApp::SendBeacon() {
     m_cntSent[static_cast<uint8_t>(type)]++;
 
     std::ostringstream oss;
-    oss << "[T=" << std::fixed << std::setprecision(1) << now
+    oss << "[T=" << std::fixed << std::setprecision(1)
+        << Simulator::Now().GetSeconds()
         << "] NODE=" << m_nodeId
         << " SENT=" << (type == BEACON ? "BEACON" : "JAM_DETECTED")
         << " SPEED=" << std::fixed << std::setprecision(2) << speed_kmh
@@ -232,7 +214,7 @@ void JamAlertApp::SendAlert(MsgType type, const std::string& alertMsg) {
     msg.speed_kmh = 0.0f;
     msg.pos_x     = static_cast<float>(pos.x);
     msg.pos_y     = static_cast<float>(pos.y);
-    std::strncpy(msg.edge,      "RSU",          sizeof(msg.edge) - 1);
+    std::strncpy(msg.edge,      "RSU",        sizeof(msg.edge) - 1);
     std::strncpy(msg.alert_msg, alertMsg.c_str(), sizeof(msg.alert_msg) - 1);
 
     Ptr<Packet> pkt = Create<Packet>(
@@ -283,9 +265,8 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
             << " MSG=\"" << msg.alert_msg << "\"";
         LogEvent(oss.str());
 
-        // Fix 4: OBU receiving a JAM_ALERT — log only the FIRST receipt.
-        if (!m_isRsu && msg.msg_type == JAM_ALERT && !m_alertRecvFired) {
-            m_alertRecvFired = true;
+        // OBU receiving a JAM_ALERT — log which RSU warned it
+        if (!m_isRsu && msg.msg_type == JAM_ALERT) {
             std::ostringstream warn;
             warn << "[T=" << std::fixed << std::setprecision(1)
                  << Simulator::Now().GetSeconds()
@@ -295,32 +276,26 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
             LogEvent(warn.str());
         }
 
-        // Fix 3: RSU jam-aggregation with 30-second rolling window.
-        // A sender is "active" only if its latest JAM_DETECTED arrived
-        // within the last JAM_WINDOW_S seconds.
+        // RSU jam-aggregation logic — accumulate DISTINCT vehicles over jam period.
+        // With sparse traffic (10 vehicles, ~1 km RSU spacing) vehicles pass through
+        // one at a time; a 30-s rolling window empties before the 3rd vehicle arrives.
+        // Instead the RSU collects distinct senders for the whole simulation and fires
+        // exactly once when >= JAM_VEH_THRESHOLD distinct OBUs have reported slow speed.
         if (m_isRsu && msg.msg_type == JAM_DETECTED) {
             double now = Simulator::Now().GetSeconds();
 
-            // Update last-seen time for this sender
-            m_seenSenders[msg.sender_id] = now;
+            m_seenSenders.insert(msg.sender_id);
 
-            // Count senders whose most recent report is within the window
-            uint32_t activeCount = 0;
-            for (const auto& kv : m_seenSenders) {
-                if (now - kv.second <= JAM_WINDOW_S) {
-                    activeCount++;
-                }
-            }
-
+            // Log every JAM_DETECTED received at RSU
             std::ostringstream rlog;
             rlog << "[T=" << std::fixed << std::setprecision(1) << now
                  << "] RSU=" << m_nodeId
                  << " JAM_DETECTED_FROM=" << msg.sender_id
                  << " SPEED=" << std::fixed << std::setprecision(2) << msg.speed_kmh
-                 << " DISTINCT_COUNT=" << activeCount;
+                 << " DISTINCT_COUNT=" << m_seenSenders.size();
             LogEvent(rlog.str());
 
-            if (!m_jamFired && activeCount >= JAM_VEH_THRESHOLD) {
+            if (!m_jamFired && m_seenSenders.size() >= JAM_VEH_THRESHOLD) {
                 m_jamFired = true;
 
                 std::ostringstream qlog;
@@ -328,12 +303,10 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
                      << "] RSU=" << m_nodeId
                      << " QUORUM_REACHED vehicles=[";
                 bool first = true;
-                for (const auto& kv : m_seenSenders) {
-                    if (now - kv.second <= JAM_WINDOW_S) {
-                        if (!first) qlog << ",";
-                        qlog << kv.first;
-                        first = false;
-                    }
+                for (uint32_t id : m_seenSenders) {
+                    if (!first) qlog << ",";
+                    qlog << id;
+                    first = false;
                 }
                 qlog << "]";
                 LogEvent(qlog.str());
@@ -342,16 +315,12 @@ void JamAlertApp::HandleRead(Ptr<Socket> socket) {
                     ? "Take alternate route: jam detected ahead"
                     : m_alertMsg;
 
-                // Fix 4: jam RSU broadcasts 802.11p alert locally AND relays
-                // over backhaul so approaching vehicles (near rsu_01) also get it.
-                SendAlert(JAM_ALERT, alertStr);
+                // Phase 3: relay over backhaul if wired peer is configured;
+                // otherwise broadcast over 802.11p directly.
                 if (m_hasBkPeer) {
                     SendBackhaulAlert(alertStr);
-                    // Fix 4: start keepalive relays every RELAY_KEEPALIVE_INTERVAL_S
-                    // so rsu_01 continues broadcasting while the jam is active.
-                    m_keepaliveEvent = Simulator::Schedule(
-                        Seconds(RELAY_KEEPALIVE_INTERVAL_S),
-                        &JamAlertApp::SendKeepalive, this);
+                } else {
+                    SendAlert(JAM_ALERT, alertStr);
                 }
             }
         }
@@ -389,28 +358,6 @@ void JamAlertApp::SendBackhaulAlert(const std::string& alertMsg) {
     LogEvent(oss.str());
 }
 
-// Fix 4: rsu_02 periodic keepalive relay while at least one sender still active
-void JamAlertApp::SendKeepalive() {
-    double now = Simulator::Now().GetSeconds();
-
-    uint32_t activeCount = 0;
-    for (const auto& kv : m_seenSenders) {
-        if (now - kv.second <= JAM_WINDOW_S) {
-            activeCount++;
-        }
-    }
-
-    if (activeCount >= 1 && m_bkTxSocket) {
-        SendBackhaulAlert(m_alertMsg.empty()
-            ? "Take alternate route: jam detected ahead"
-            : m_alertMsg);
-        m_keepaliveEvent = Simulator::Schedule(
-            Seconds(RELAY_KEEPALIVE_INTERVAL_S),
-            &JamAlertApp::SendKeepalive, this);
-    }
-    // activeCount == 0: jam cleared, stop keepalives
-}
-
 void JamAlertApp::HandleBackhaulRead(Ptr<Socket> socket) {
     Ptr<Packet> pkt;
     Address     from;
@@ -422,58 +369,24 @@ void JamAlertApp::HandleBackhaulRead(Ptr<Socket> socket) {
         msg.edge[31]      = '\0';
         msg.alert_msg[63] = '\0';
 
-        double now = Simulator::Now().GetSeconds();
-
         std::ostringstream oss;
-        oss << "[T=" << std::fixed << std::setprecision(1) << now
+        oss << "[T=" << std::fixed << std::setprecision(1)
+            << Simulator::Now().GetSeconds()
             << "] RSU=" << m_nodeId
             << " RELAY_RECV FROM_RSU=" << msg.sender_id
             << " MSG=\"" << msg.alert_msg << "\"";
         LogEvent(oss.str());
 
+        // Rebroadcast over 802.11p — use embedded alert text if present,
+        // else fall back to this RSU's own configured alert message.
         std::string alertStr(msg.alert_msg);
         if (alertStr.empty()) {
             alertStr = m_alertMsg.empty()
                 ? "Take alternate route: jam detected ahead"
                 : m_alertMsg;
         }
-
-        // Fix 4: update last relay time; start periodic 802.11p broadcast if
-        // this is the first relay received.
-        m_lastRelayTime = now;
-        if (!m_broadcastActive) {
-            m_broadcastActive = true;
-            m_alertMsg = alertStr;  // store for repeated use
-            // Broadcast immediately, then every ALERT_BROADCAST_INTERVAL_S
-            m_broadcastEvent = Simulator::Schedule(
-                Seconds(0.0), &JamAlertApp::BroadcastAlertPeriodically, this);
-        }
-        // Subsequent relay keepalives only update m_lastRelayTime (already active).
+        SendAlert(JAM_ALERT, alertStr);
     }
-}
-
-// Fix 4: rsu_01 broadcasts JAM_ALERT every 2 s while jam relay is active.
-void JamAlertApp::BroadcastAlertPeriodically() {
-    double now = Simulator::Now().GetSeconds();
-
-    // Stop if no relay has been received for RELAY_TIMEOUT_S
-    if (m_lastRelayTime >= 0.0 && (now - m_lastRelayTime) > RELAY_TIMEOUT_S) {
-        m_broadcastActive = false;
-        std::ostringstream oss;
-        oss << "[T=" << std::fixed << std::setprecision(1) << now
-            << "] RSU=" << m_nodeId
-            << " JAM_BROADCAST_STOPPED (no relay for " << RELAY_TIMEOUT_S << "s)";
-        LogEvent(oss.str());
-        return;
-    }
-
-    SendAlert(JAM_ALERT, m_alertMsg.empty()
-        ? "Take alternate route: jam detected ahead"
-        : m_alertMsg);
-
-    m_broadcastEvent = Simulator::Schedule(
-        Seconds(ALERT_BROADCAST_INTERVAL_S),
-        &JamAlertApp::BroadcastAlertPeriodically, this);
 }
 
 // ── Logging ───────────────────────────────────────────────────────────────────

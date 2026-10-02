@@ -35,13 +35,11 @@ PROJECT_ROOT    = Path(__file__).resolve().parent.parent.parent
 SUMOCFG         = PROJECT_ROOT / "sim" / "sumo" / "vanet.sumocfg"
 RSU_CSV         = PROJECT_ROOT / "corridor" / "rsu_positions.csv"
 TRAFFIC_STATE   = PROJECT_ROOT / "corridor" / "traffic_state.json"
-MOBILITY_NS2      = PROJECT_ROOT / "sim" / "bridge" / "mobility.ns2"
-RSU_STATIC_JSON   = PROJECT_ROOT / "sim" / "bridge" / "rsu_static.json"
-SPEED_LOG_JSON    = PROJECT_ROOT / "sim" / "bridge" / "speed_log.json"
-DEPART_TIMES_JSON = PROJECT_ROOT / "sim" / "bridge" / "depart_times.json"
-NODE_MAP_JSON     = PROJECT_ROOT / "sim" / "bridge" / "node_map.json"
+MOBILITY_NS2    = PROJECT_ROOT / "sim" / "bridge" / "mobility.ns2"
+RSU_STATIC_JSON = PROJECT_ROOT / "sim" / "bridge" / "rsu_static.json"
+SPEED_LOG_JSON  = PROJECT_ROOT / "sim" / "bridge" / "speed_log.json"
 
-SIM_DURATION_S = 1200   # must match vanet.sumocfg <end> value
+SIM_DURATION_S = 600   # must match vanet.sumocfg <end> value
 STEP_S         = 1.0   # simulation step length (seconds)
 
 
@@ -387,27 +385,6 @@ def main() -> int:
 
     write_speed_log(fcd, SPEED_LOG_JSON, node_id_map)
     print(f"  Speed log      → {SPEED_LOG_JSON}")
-
-    # Fix 2: write departure times per NS-3 node so the simulation can
-    # suppress slow-second counting before each vehicle has actually departed.
-    depart_times = {}
-    node_map     = {}
-    for veh_id, nid in node_id_map.items():
-        t0 = fcd[veh_id][0][0] if fcd[veh_id] else 0.0
-        depart_times[str(nid)] = round(t0, 1)
-        node_map[str(nid)]     = veh_id
-
-    DEPART_TIMES_JSON.write_text(
-        json.dumps(depart_times, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    print(f"  Depart times   → {DEPART_TIMES_JSON}")
-
-    NODE_MAP_JSON.write_text(
-        json.dumps(node_map, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    print(f"  Node map       → {NODE_MAP_JSON}")
 
     # ── Summary ───────────────────────────────────────────────────────────────
     print()

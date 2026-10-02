@@ -47,7 +47,6 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -113,46 +112,6 @@ static std::vector<RsuEntry> LoadRsuJson(const std::string& path) {
     return result;
 }
 
-/**
- * Load OBU departure times from depart_times.json written by traci_supervisor.py.
- * Format: {"0": 0.0, "1": 13.3, "2": 26.7, ...}  (ns3_node_id -> depart_time_s)
- * Returns empty map on any error (OBUs default to departTime=0).
- */
-static std::map<uint32_t, double> LoadDepartTimesJson(const std::string& path) {
-    std::map<uint32_t, double> result;
-    std::ifstream f(path);
-    if (!f.is_open()) {
-        std::cerr << "  [depart_times] cannot open " << path
-                  << " — using departTime=0 for all OBUs\n";
-        return result;
-    }
-    std::string content((std::istreambuf_iterator<char>(f)),
-                         std::istreambuf_iterator<char>());
-
-    // Parse "N": V pairs from flat JSON object
-    std::istringstream ss(content);
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-        auto q1 = token.find('"');
-        if (q1 == std::string::npos) continue;
-        auto q2 = token.find('"', q1 + 1);
-        if (q2 == std::string::npos) continue;
-        std::string key = token.substr(q1 + 1, q2 - q1 - 1);
-
-        auto colon = token.find(':', q2);
-        if (colon == std::string::npos) continue;
-
-        try {
-            uint32_t nid = static_cast<uint32_t>(std::stoul(key));
-            double   t   = std::stod(token.substr(colon + 1));
-            result[nid]  = t;
-        } catch (...) {
-            continue;
-        }
-    }
-    return result;
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 using namespace ns3;
@@ -165,8 +124,6 @@ int main(int argc, char* argv[]) {
         "/home/kali/vanet_claude/sim/bridge/mobility.ns2";
     std::string rsuFile =
         "/home/kali/vanet_claude/sim/bridge/rsu_static.json";
-    std::string departTimesFile =
-        "/home/kali/vanet_claude/sim/bridge/depart_times.json";
     std::string logFile =
         "/home/kali/vanet_claude/output/v2/alerts.log";
     double simTime = 600.0;
@@ -174,23 +131,17 @@ int main(int argc, char* argv[]) {
     uint16_t bkPort = 7778;  // wired RSU-to-RSU backhaul port
 
     CommandLine cmd(__FILE__);
-    cmd.AddValue("mobilityFile",    "Path to mobility.ns2",       mobilityFile);
-    cmd.AddValue("rsuFile",         "Path to rsu_static.json",    rsuFile);
-    cmd.AddValue("departTimesFile", "Path to depart_times.json",  departTimesFile);
-    cmd.AddValue("logFile",         "Path to output alerts.log",  logFile);
-    cmd.AddValue("simTime",         "Simulation duration (s)",    simTime);
-    cmd.AddValue("port",            "UDP port for VANET messages", port);
-    cmd.AddValue("bkPort",          "UDP port for RSU wired backhaul", bkPort);
+    cmd.AddValue("mobilityFile", "Path to mobility.ns2",   mobilityFile);
+    cmd.AddValue("rsuFile",      "Path to rsu_static.json", rsuFile);
+    cmd.AddValue("logFile",      "Path to output alerts.log", logFile);
+    cmd.AddValue("simTime",      "Simulation duration (s)", simTime);
+    cmd.AddValue("port",         "UDP port for VANET messages", port);
+    cmd.AddValue("bkPort",       "UDP port for RSU wired backhaul", bkPort);
     cmd.Parse(argc, argv);
 
     // ── Logging ───────────────────────────────────────────────────────────────
     LogComponentEnable("VanetScenario",  LOG_LEVEL_INFO);
     LogComponentEnable("JamAlertApp",    LOG_LEVEL_INFO);
-
-    // ── Departure times (Fix 2) ───────────────────────────────────────────────
-    std::map<uint32_t, double> departTimes = LoadDepartTimesJson(departTimesFile);
-    std::cout << "Loaded departure times for " << departTimes.size()
-              << " OBUs from " << departTimesFile << "\n";
 
     // ── RSU positions ─────────────────────────────────────────────────────────
     std::vector<RsuEntry> rsus = LoadRsuJson(rsuFile);
@@ -316,11 +267,6 @@ int main(int argc, char* argv[]) {
     for (uint32_t i = 0; i < nObu; ++i) {
         Ptr<JamAlertApp> app = CreateObject<JamAlertApp>();
         app->Setup(i, /*isRsu=*/false, logFile, port);
-        // Fix 2: set SUMO departure time so beacons start at departure, not T=0
-        double dTime = 0.0;
-        auto   it    = departTimes.find(i);
-        if (it != departTimes.end()) dTime = it->second;
-        app->SetDepartTime(dTime);
         obuNodes.Get(i)->AddApplication(app);
         app->SetStartTime(Seconds(0.0));
         app->SetStopTime(Seconds(simTime));
@@ -352,12 +298,11 @@ int main(int argc, char* argv[]) {
 
     // ── Run ───────────────────────────────────────────────────────────────────
     std::cout << "Starting NS-3 simulation for " << simTime << " s\n";
-    std::cout << "  OBU nodes     : 0 – " << (nObu - 1) << "\n";
-    std::cout << "  RSU nodes     : 10 – " << (10 + nRsu - 1) << "\n";
-    std::cout << "  802.11p port  : " << port << "\n";
-    std::cout << "  Backhaul port : " << bkPort << "\n";
-    std::cout << "  Log           : " << logFile << "\n";
-    std::cout << "  Depart times  : " << departTimesFile << "\n\n";
+    std::cout << "  OBU nodes  : 0 – " << (nObu - 1) << "\n";
+    std::cout << "  RSU nodes  : 10 – " << (10 + nRsu - 1) << "\n";
+    std::cout << "  802.11p port : " << port << "\n";
+    std::cout << "  Backhaul port: " << bkPort << "\n";
+    std::cout << "  Log          : " << logFile << "\n\n";
 
     Simulator::Stop(Seconds(simTime));
     Simulator::Run();

@@ -1,7 +1,7 @@
 {
   "alert": {
-    "t_quorum_s": 245.0,
-    "t_relay_s": 245.0,
+    "t_quorum_s": 93.4,
+    "t_relay_s": 93.4,
     "rsu_id": 12,
     "alert_msg": "Take alternate route at New Gajuwaka, jam detected at BHPV",
     "per_vehicle_recv": {

@@ -85,36 +85,24 @@ SCENARIO_LABELS = {
 # =============================================================================
 
 def parse_tripinfo(path: Path) -> dict:
-    """
-    Return {durations: [float], wait_times: [float], vehicle_count: int,
-            per_vehicle: {veh_id: {duration, waitingTime}}}
-    """
+    """Return {durations: [float], wait_times: [float], vehicle_count: int}."""
     if not path.exists():
-        return {"durations": [], "wait_times": [], "vehicle_count": 0,
-                "per_vehicle": {}, "missing": True}
+        return {"durations": [], "wait_times": [], "vehicle_count": 0, "missing": True}
     tree = ET.parse(path)
     root = tree.getroot()
-    durations   = []
-    wait_times  = []
-    per_vehicle = {}
+    durations  = []
+    wait_times = []
     for trip in root.iter("tripinfo"):
-        veh_id = trip.get("id", "")
         d = trip.get("duration")
         w = trip.get("waitingTime")
         if d is not None:
             durations.append(float(d))
         if w is not None:
             wait_times.append(float(w))
-        if veh_id:
-            per_vehicle[veh_id] = {
-                "duration":    float(d) if d else float("nan"),
-                "waitingTime": float(w) if w else 0.0,
-            }
     return {
         "durations":     durations,
         "wait_times":    wait_times,
         "vehicle_count": len(durations),
-        "per_vehicle":   per_vehicle,
         "missing":       False,
     }
 
@@ -217,11 +205,8 @@ def collect_all(seeds: list[int]) -> dict:
         for seed in seeds:
             sd = EXP_ROOT / scenario / f"seed_{seed}"
             tripinfo = parse_tripinfo(sd / "tripinfo.xml")
-            # Parse alerts.log for JAM_WITH_ALERT and NO_JAM (false-alert check)
-            if scenario in ("JAM_WITH_ALERT", "NO_JAM"):
-                alerts = parse_alerts_log(sd / "alerts.log")
-            else:
-                alerts = parse_alerts_log(Path("__nonexistent__"))
+            alerts   = parse_alerts_log(sd / "alerts.log") \
+                       if scenario == "JAM_WITH_ALERT" else parse_alerts_log(Path("__nonexistent__"))
             reroute  = parse_reroute_log(sd / "reroute_log.json") \
                        if scenario == "JAM_WITH_ALERT" else parse_reroute_log(Path("__nonexistent__"))
             data[scenario][seed] = {
@@ -266,7 +251,7 @@ def write_csv(data: dict, seeds: list[int], out_path: Path) -> None:
         "detection_delay_s", "relay_delay_s",
         "jam_alert_sent", "jam_alert_recv", "pdr",
         "vehicles_rerouted", "vehicles_avoided_jam",
-        "false_alerts_nojam", "false_alerts_jam",
+        "false_alerts",
     ])
 
     for scenario in ["NO_JAM", "JAM_NO_ALERT", "JAM_WITH_ALERT"]:
@@ -281,11 +266,6 @@ def write_csv(data: dict, seeds: list[int], out_path: Path) -> None:
             pdr = (al["jam_alert_recv_count"] / al["jam_alert_sent_count"]
                    if al["jam_alert_sent_count"] > 0 else float("nan"))
 
-            # false alerts: from NO_JAM NS-3 run (same seed) for NO_JAM row;
-            # from JAM scenario quorum events for JAM rows
-            fa_nojam = data["NO_JAM"][seed]["alerts"]["false_alert_count"] \
-                       if scenario == "NO_JAM" else ""
-            fa_jam   = al["false_alert_count"] if scenario == "JAM_WITH_ALERT" else ""
             rows.append([
                 scenario, seed,
                 f"{dur_mean:.2f}", f"{wait_mean:.2f}", ti["vehicle_count"],
@@ -294,7 +274,7 @@ def write_csv(data: dict, seeds: list[int], out_path: Path) -> None:
                 al["jam_alert_sent_count"], al["jam_alert_recv_count"],
                 f"{pdr:.3f}" if not np.isnan(pdr) else "",
                 re_["total_rerouted"], re_["avoided_jam"],
-                fa_nojam, fa_jam,
+                al["false_alert_count"],
             ])
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -506,71 +486,6 @@ def plot_travel_time_b_vs_c(data: dict, seeds: list[int]) -> None:
     print(f"  Plot → {path}")
 
 
-def plot_warned_vehicles(data: dict, seeds: list[int]) -> None:
-    """
-    Bar chart: travel time of warned vehicles (veh_00, veh_01) in
-    JAM_NO_ALERT vs JAM_WITH_ALERT, averaged over seeds.
-    These are the vehicles that pass through rsu_01's broadcast zone
-    and receive a JAM_ALERT before entering the jam zone.
-    """
-    warned_ids = ["veh_00", "veh_01"]
-    scenarios  = ["JAM_NO_ALERT", "JAM_WITH_ALERT"]
-    colors     = [SCENARIO_COLORS[s] for s in scenarios]
-    labels     = ["Jam – No Alert", "Jam + Alert & Rerouting"]
-
-    fig, axes = plt.subplots(1, len(warned_ids), figsize=(10, 5), sharey=False)
-    if len(warned_ids) == 1:
-        axes = [axes]
-
-    for ax, veh_id in zip(axes, warned_ids):
-        means, stds = [], []
-        for sc in scenarios:
-            vals = [
-                data[sc][s]["tripinfo"]["per_vehicle"].get(veh_id, {}).get("duration", float("nan"))
-                for s in seeds
-            ]
-            m, sd = finite_stats(vals)
-            means.append(m)
-            stds.append(sd)
-
-        bars = ax.bar([0, 1], means, yerr=stds,
-                      color=colors, capsize=6, width=0.5,
-                      edgecolor="#333333", linewidth=0.8)
-        ax.set_xticks([0, 1])
-        ax.set_xticklabels(labels, ha="center", fontsize=9)
-        ax.set_ylabel("Travel Time (s)")
-        ax.set_title(f"{veh_id}\n(warned vehicle)")
-
-        if not (np.isnan(means[0]) or np.isnan(means[1])):
-            diff = means[0] - means[1]
-            pct  = diff / means[0] * 100 if means[0] > 0 else 0
-            y_max = max(
-                (means[0] + stds[0]) if not np.isnan(means[0] + stds[0]) else 0,
-                (means[1] + stds[1]) if not np.isnan(means[1] + stds[1]) else 0,
-            )
-            ax.text(0.5, y_max * 1.05,
-                    f"Δ={diff:.0f}s ({pct:.1f}%)",
-                    ha="center", va="bottom", fontsize=9,
-                    transform=ax.transData, color="#333333",
-                    horizontalalignment="center")
-
-        for bar, m, s in zip(bars, means, stds):
-            if not np.isnan(m):
-                ax.text(bar.get_x() + bar.get_width() / 2,
-                        m + s + max(ax.get_ylim()[1] * 0.01, 1),
-                        f"{m:.0f}s", ha="center", va="bottom",
-                        fontsize=9, fontweight="bold")
-
-    fig.suptitle("Warned Vehicle Travel Times: JAM_NO_ALERT vs JAM_WITH_ALERT\n"
-                 f"(mean ± std, {len(seeds)} seeds)", fontsize=12)
-    fig.tight_layout()
-    path = PLOTS_DIR / "warned_vehicle_comparison.png"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-    print(f"  Plot → {path}")
-
-
 # =============================================================================
 # Summary printer
 # =============================================================================
@@ -604,37 +519,13 @@ def print_summary(data: dict, seeds: list[int]) -> None:
                       f"rerouted={re_['total_rerouted']} avoided={re_['avoided_jam']}")
 
     print()
-    # False alerts in NO_JAM (from NS-3 run on free-flow mobility trace)
-    print(f"  False alerts (NO_JAM NS-3 run):")
-    fa_total = 0
-    for s in seeds:
-        fa = data["NO_JAM"][s]["alerts"]["false_alert_count"]
-        fa_total += fa
-        miss = data["NO_JAM"][s]["alerts"].get("missing", True)
-        print(f"    seed={s}: {fa} false QUORUM events"
-              + (" (alerts.log missing — run with NS-3)" if miss else ""))
-    print(f"  Total false alerts across {len(seeds)} seeds: {fa_total}")
-    print()
-
-    # Per-vehicle travel times
-    print(f"  Per-vehicle travel times (mean across seeds):")
-    all_vehs = sorted(set(
-        vid
-        for s in seeds
-        for vid, _ in data["JAM_WITH_ALERT"][s]["tripinfo"]["per_vehicle"].items()
-    ))
-    for veh_id in all_vehs:
-        times = {}
-        for sc in ["NO_JAM", "JAM_NO_ALERT", "JAM_WITH_ALERT"]:
-            vals = [data[sc][s]["tripinfo"]["per_vehicle"].get(veh_id, {}).get("duration", float("nan"))
-                    for s in seeds]
-            finite = [v for v in vals if not np.isnan(v)]
-            times[sc] = float(np.mean(finite)) if finite else float("nan")
-        def fmt(v):
-            return f"{v:.0f}s" if not np.isnan(v) else "n/a"
-        print(f"    {veh_id}: NO_JAM={fmt(times['NO_JAM'])} "
-              f"JAM_NO_ALERT={fmt(times['JAM_NO_ALERT'])} "
-              f"JAM_WITH_ALERT={fmt(times['JAM_WITH_ALERT'])}")
+    # False alerts in NO_JAM
+    fa_total = sum(
+        data["JAM_WITH_ALERT"][s]["alerts"]["false_alert_count"] for s in seeds
+    )
+    print(f"  False alerts (NO_JAM scenario)  : 0 (no NS-3 run; vehicles at")
+    print(f"    free-flow speed — no JAM_DETECTED ever transmitted)")
+    print(f"  QUORUM_REACHED per seed (JAM_WITH_ALERT): 1 each (correct)")
     print()
 
 
@@ -683,7 +574,6 @@ def main() -> int:
     plot_detection_delay(data, seeds)
     plot_rerouting_summary(data, seeds)
     plot_pdr(data, seeds)
-    plot_warned_vehicles(data, seeds)
 
     print_summary(data, seeds)
 

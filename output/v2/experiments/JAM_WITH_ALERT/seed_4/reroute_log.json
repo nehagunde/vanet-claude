@@ -1,48 +1,48 @@
 {
   "alert": {
-    "t_quorum_s": 245.0,
-    "t_relay_s": 245.0,
+    "t_quorum_s": 99.2,
+    "t_relay_s": 99.2,
     "rsu_id": 12,
     "alert_msg": "Take alternate route at New Gajuwaka, jam detected at BHPV",
     "per_vehicle_recv": {
       "veh_03": {
-        "t_recv": 93.4,
-        "from_rsu": 12
-      },
-      "veh_02": {
-        "t_recv": 93.4,
+        "t_recv": 99.2,
         "from_rsu": 12
       },
       "veh_04": {
-        "t_recv": 93.4,
+        "t_recv": 99.2,
+        "from_rsu": 12
+      },
+      "veh_02": {
+        "t_recv": 99.2,
         "from_rsu": 12
       },
       "veh_01": {
-        "t_recv": 93.4,
+        "t_recv": 99.2,
         "from_rsu": 11
       },
       "veh_00": {
-        "t_recv": 107.4,
+        "t_recv": 107.2,
         "from_rsu": 11
       },
-      "veh_05": {
-        "t_recv": 343.2,
+      "veh_06": {
+        "t_recv": 348.2,
         "from_rsu": 13
       },
-      "veh_06": {
-        "t_recv": 343.2,
+      "veh_05": {
+        "t_recv": 348.2,
         "from_rsu": 13
       },
       "veh_09": {
-        "t_recv": 413.9,
-        "from_rsu": 16
-      },
-      "veh_07": {
-        "t_recv": 413.9,
+        "t_recv": 408.9,
         "from_rsu": 16
       },
       "veh_08": {
-        "t_recv": 413.9,
+        "t_recv": 408.9,
+        "from_rsu": 16
+      },
+      "veh_07": {
+        "t_recv": 408.9,
         "from_rsu": 16
       }
     }
@@ -50,18 +50,35 @@
   "jam_edges": [
     "218746140#8",
     "544537081#1",
+    "544537081#2",
+    "544537081#3",
+    "544537081#4",
+    "544537081#5",
     "544537085#3",
     "544537085#4",
+    "548058730#0",
+    "729798210",
     "742760569#2",
     "883673740",
     "90800092#12"
   ],
   "reroute_events": [
     {
-      "t_alert_s": 93.4,
-      "t_reroute_s": 94,
+      "t_alert_s": 99.2,
+      "t_reroute_s": 100,
       "from_rsu": 12,
       "veh_id": "veh_03",
+      "current_edge": "218746140#8",
+      "old_route": [],
+      "new_route": [],
+      "avoided_jam": false,
+      "skipped": "already_on_jam_edge"
+    },
+    {
+      "t_alert_s": 99.2,
+      "t_reroute_s": 100,
+      "from_rsu": 12,
+      "veh_id": "veh_04",
       "current_edge": "544537085#3",
       "old_route": [],
       "new_route": [],
@@ -69,8 +86,8 @@
       "skipped": "already_on_jam_edge"
     },
     {
-      "t_alert_s": 93.4,
-      "t_reroute_s": 94,
+      "t_alert_s": 99.2,
+      "t_reroute_s": 100,
       "from_rsu": 12,
       "veh_id": "veh_02",
       "current_edge": "544537085#3",
@@ -80,22 +97,11 @@
       "skipped": "already_on_jam_edge"
     },
     {
-      "t_alert_s": 93.4,
-      "t_reroute_s": 94,
-      "from_rsu": 12,
-      "veh_id": "veh_04",
-      "current_edge": "218746140#8",
-      "old_route": [],
-      "new_route": [],
-      "avoided_jam": false,
-      "skipped": "already_on_jam_edge"
-    },
-    {
-      "t_alert_s": 93.4,
-      "t_reroute_s": 94,
+      "t_alert_s": 99.2,
+      "t_reroute_s": 100,
       "from_rsu": 11,
       "veh_id": "veh_01",
-      "current_edge": "",
+      "current_edge": "90800092#5",
       "old_route": [
         "544537081#17",
         "544537081#18",
@@ -200,7 +206,7 @@
       "new_route_len": 60
     },
     {
-      "t_alert_s": 107.4,
+      "t_alert_s": 107.2,
       "t_reroute_s": 108,
       "from_rsu": 11,
       "veh_id": "veh_00",

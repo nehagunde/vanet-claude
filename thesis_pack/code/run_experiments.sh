@@ -3,7 +3,7 @@
 #  run_experiments.sh — Phase 5: three-scenario × five-seed experiment sweep
 #
 #  Scenarios
-#    NO_JAM        — free-flow: traci_supervisor (no jam) + NS-3 (false-alert check)
+#    NO_JAM        — no jam injection, no NS-3, no rerouting (free-flow baseline)
 #    JAM_NO_ALERT  — jam injected, no rerouting (worst case)
 #    JAM_WITH_ALERT— jam + NS-3 detection + backhaul relay + rerouting
 #
@@ -11,7 +11,6 @@
 #
 #  Outputs (all under output/v2/experiments/):
 #    NO_JAM/seed_N/tripinfo.xml
-#    NO_JAM/seed_N/alerts.log          ← NS-3 run on free-flow trace (Fix 6)
 #    JAM_NO_ALERT/seed_N/tripinfo.xml
 #    JAM_WITH_ALERT/seed_N/tripinfo.xml
 #    JAM_WITH_ALERT/seed_N/alerts.log
@@ -22,8 +21,9 @@
 #    bash scripts/run_experiments.sh
 #
 #  Optional flags:
-#    --seeds "1 2"  run only those seeds (for quick testing)
-#    --gui          launch SUMO-GUI for each run (very slow, for debug only)
+#    --skip-ns3    skip NS-3 run (reuse existing alerts.log for each seed)
+#    --seeds "1 2" run only those seeds (for quick testing)
+#    --gui         launch SUMO-GUI for each run (very slow, for debug only)
 # =============================================================================
 
 set -eu
@@ -33,14 +33,16 @@ PRJ="$(pwd)"
 EXP_OUT="$PRJ/output/v2/experiments"
 NS3_ROOT="/home/kali/ns-3-dev"
 SEEDS="1 2 3 4 5"
+SKIP_NS3=0
 GUI_FLAG=""
 TRACI_PORT_BASE=8820
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --seeds)  SEEDS="$2"; shift ;;
-    --gui)    GUI_FLAG="--gui" ;;
+    --skip-ns3)  SKIP_NS3=1 ;;
+    --seeds)     SEEDS="$2"; shift ;;
+    --gui)       GUI_FLAG="--gui" ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
   shift
@@ -50,6 +52,7 @@ echo ""
 echo "============================================================"
 echo "  Phase 5 — Experiment sweep"
 echo "  Seeds    : $SEEDS"
+echo "  Skip NS-3: $SKIP_NS3"
 echo "============================================================"
 echo ""
 
@@ -71,27 +74,12 @@ wait_port_free() {
 run_logged() {
   local logfile="$1"; shift
   local tail_n="${1:-5}";  shift
+  # Run the command; redirect stdout+stderr to log file.
+  # Exit code of the actual command is returned (not tee).
   "$@" > "$logfile" 2>&1
   local rc=$?
   tail -n "$tail_n" "$logfile"
   return $rc
-}
-
-# ── Helper: run NS-3 scenario ─────────────────────────────────────────────────
-run_ns3() {
-  local mobility="$1"
-  local log_out="$2"
-  local step_log="$3"
-
-  cd "$NS3_ROOT"
-  run_logged "$step_log" 4 \
-    ./ns3 run "vanet/vanet-scenario \
-      --mobilityFile=$mobility \
-      --rsuFile=$PRJ/sim/bridge/rsu_static.json \
-      --departTimesFile=$PRJ/sim/bridge/depart_times.json \
-      --logFile=$log_out \
-      --simTime=600"
-  cd "$PRJ"
 }
 
 # =============================================================================
@@ -100,31 +88,20 @@ for seed in $SEEDS; do
   echo "  SEED $seed"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  # ── (a) NO_JAM — free-flow SUMO + NS-3 false-alert check ──────────────────
+  # ── (a) NO_JAM — plain SUMO, no TraCI ─────────────────────────────────────
   echo ""
-  echo "[NO_JAM seed=$seed] Step 1 — free-flow SUMO (traci_supervisor, no jam) ..."
+  echo "[NO_JAM seed=$seed] Running free-flow SUMO ..."
   NOJAM_DIR="$EXP_OUT/NO_JAM/seed_$seed"
   mkdir -p "$NOJAM_DIR"
 
-  PORT_A=$((TRACI_PORT_BASE))
-  wait_port_free $PORT_A
-
-  # Run traci_supervisor WITHOUT --mock (no jam injection) to get mobility.ns2
-  run_logged "$NOJAM_DIR/step1_sumo.log" 4 \
-    python3 "$PRJ/sim/bridge/traci_supervisor.py" \
+  run_logged "$NOJAM_DIR/sumo.log" 3 \
+    sumo \
+      -c "$PRJ/sim/sumo/vanet.sumocfg" \
       --seed "$seed" \
-      --tripinfo "$NOJAM_DIR/tripinfo.xml" \
-      --port $PORT_A \
-      $GUI_FLAG
+      --tripinfo-output "$NOJAM_DIR/tripinfo.xml" \
+      --no-step-log
 
   echo "  → $NOJAM_DIR/tripinfo.xml"
-
-  echo "[NO_JAM seed=$seed] Step 2 — NS-3 802.11p (free-flow, checking false alerts) ..."
-  run_ns3 "$PRJ/sim/bridge/mobility.ns2" \
-          "$NOJAM_DIR/alerts.log" \
-          "$NOJAM_DIR/step2_ns3.log"
-
-  echo "  → $NOJAM_DIR/alerts.log"
 
   # ── (b) JAM_NO_ALERT — jam injected, no rerouting ─────────────────────────
   echo ""
@@ -161,14 +138,34 @@ for seed in $SEEDS; do
       --port $PORT_C \
       $GUI_FLAG
 
-  echo "[JAM_WITH_ALERT seed=$seed] Step 2 — NS-3 802.11p simulation ..."
-  run_ns3 "$PRJ/sim/bridge/mobility.ns2" \
-          "$JALERT_DIR/alerts.log" \
-          "$JALERT_DIR/step2_ns3.log"
+  # Step 2: NS-3 802.11p simulation
+  if [[ $SKIP_NS3 -eq 0 ]]; then
+    echo "[JAM_WITH_ALERT seed=$seed] Step 2 — NS-3 802.11p simulation ..."
+    cd "$NS3_ROOT"
+    run_logged "$JALERT_DIR/step2_ns3.log" 4 \
+      ./ns3 run "vanet/vanet-scenario \
+        --mobilityFile=$PRJ/sim/bridge/mobility.ns2 \
+        --rsuFile=$PRJ/sim/bridge/rsu_static.json \
+        --logFile=$JALERT_DIR/alerts.log"
+    cd "$PRJ"
+  else
+    echo "[JAM_WITH_ALERT seed=$seed] Step 2 — SKIPPING NS-3 (--skip-ns3 set)"
+    if [[ ! -f "$JALERT_DIR/alerts.log" ]]; then
+      if [[ -f "$PRJ/output/v2/alerts.log" ]]; then
+        cp "$PRJ/output/v2/alerts.log" "$JALERT_DIR/alerts.log"
+        echo "  Copied baseline output/v2/alerts.log → $JALERT_DIR/alerts.log"
+      else
+        echo "  ERROR: No alerts.log found. Run without --skip-ns3 at least once." >&2
+        exit 1
+      fi
+    else
+      echo "  Reusing existing $JALERT_DIR/alerts.log"
+    fi
+  fi
   echo "  → $JALERT_DIR/alerts.log"
 
-  # Step 3: Rerouter (per-vehicle, Fix 5)
-  echo "[JAM_WITH_ALERT seed=$seed] Step 3 — Rerouter (per-vehicle SUMO + rerouting) ..."
+  # Step 3: Rerouter
+  echo "[JAM_WITH_ALERT seed=$seed] Step 3 — Rerouter (SUMO + rerouting) ..."
   PORT_D=$((TRACI_PORT_BASE + 30))
   wait_port_free $PORT_D
 

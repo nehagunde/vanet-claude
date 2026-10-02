@@ -24,7 +24,7 @@
 
 #include <cstdint>
 #include <fstream>
-#include <map>
+#include <set>
 #include <string>
 
 namespace ns3 {
@@ -67,15 +67,10 @@ public:
      * @param isRsu      true → RSU mode (listens, re-alerts; doesn't beacon)
      * @param logPath    path to output/v2/alerts.log (shared by all nodes)
      * @param port       UDP port (default 7777)
-     * @param alertMsg   human-readable alert text (RSU only)
      */
     void Setup(uint32_t nodeId, bool isRsu,
                const std::string& logPath, uint16_t port = 7777,
                const std::string& alertMsg = "");
-
-    // Set the SUMO departure time for this OBU (from depart_times.json).
-    // Beacons and slow-second counting are suppressed before this time.
-    void SetDepartTime(double t) { m_departTime = t; }
 
     // Phase 3: point this RSU at its wired backhaul peer (the upstream RSU
     // toward approaching vehicles).  Called from vanet-scenario.cc after
@@ -98,12 +93,6 @@ private:
     void HandleBackhaulRead(Ptr<Socket> socket);
     void SendBackhaulAlert(const std::string& alertMsg);
 
-    // Fix 4: periodic JAM_ALERT rebroadcast from alert RSU (rsu_01)
-    void BroadcastAlertPeriodically();
-
-    // Fix 4: periodic keepalive relay from jam RSU (rsu_02) while jam is active
-    void SendKeepalive();
-
     // Helpers
     void LogEvent(const std::string& line);
 
@@ -119,26 +108,13 @@ private:
     EventId      m_beaconEvent;      // periodic beacon timer
     std::ofstream m_log;             // shared log file (append)
 
-    // Fix 2: departure time from SUMO.  Beacons start at this time + stagger.
-    double m_departTime {0.0};
-
     // OBU-side: consecutive beacon intervals below speed threshold
     uint32_t m_slowSeconds {0};
 
-    // Fix 3: RSU-side rolling window — maps sender_id → last JAM_DETECTED time
-    std::map<uint32_t, double> m_seenSenders;
+    // RSU-side: distinct OBU senders in current 30-second window
+    std::set<uint32_t> m_seenSenders;
+    double   m_firstSlowAt {0.0};
     bool     m_jamFired    {false};
-
-    // Fix 4: jam RSU (rsu_02) keepalive relay event
-    EventId m_keepaliveEvent;
-
-    // Fix 4: alert RSU (rsu_01) periodic 802.11p broadcast state
-    bool     m_broadcastActive  {false};
-    double   m_lastRelayTime    {-1.0};
-    EventId  m_broadcastEvent;
-
-    // Fix 4: OBU first-receipt flag (log JAM_ALERT_RECV only once per OBU)
-    bool m_alertRecvFired {false};
 
     // Phase 3: wired backhaul to upstream (approach-side) RSU
     bool         m_hasBkPeer  {false};
@@ -151,21 +127,10 @@ private:
     uint64_t m_cntSent[3] {0, 0, 0};
     uint64_t m_cntRecv[3] {0, 0, 0};
 
-    static constexpr double   BEACON_INTERVAL_S          = 1.0;
-    static constexpr float    JAM_SPEED_THRESHOLD        = 5.0f;
-    static constexpr uint32_t JAM_VEH_THRESHOLD          = 3;
-    static constexpr double   JAM_TIME_THRESHOLD         = 30.0;
-    // Fix 3: sliding window at RSU — a sender is active if last JAM_DETECTED
-    // arrived within JAM_WINDOW_S seconds.
-    static constexpr double   JAM_WINDOW_S               = 30.0;
-    // Fix 4: rsu_01 re-broadcasts JAM_ALERT every 2 s while jam is active.
-    static constexpr double   ALERT_BROADCAST_INTERVAL_S = 2.0;
-    // Fix 4: rsu_02 sends a keepalive relay every 30 s while jam is active.
-    static constexpr double   RELAY_KEEPALIVE_INTERVAL_S = 30.0;
-    // Fix 4: rsu_01 stops broadcasting if no relay received for > 35 s.
-    static constexpr double   RELAY_TIMEOUT_S            = 35.0;
-    // Fix 1: stagger each OBU's beacon by this amount per node index.
-    static constexpr double   BEACON_STAGGER_S           = 0.1;
+    static constexpr double   BEACON_INTERVAL_S   = 1.0;
+    static constexpr float    JAM_SPEED_THRESHOLD = 5.0f;
+    static constexpr uint32_t JAM_VEH_THRESHOLD   = 3;
+    static constexpr double   JAM_TIME_THRESHOLD  = 30.0;
 };
 
 } // namespace ns3
