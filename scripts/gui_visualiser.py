@@ -129,6 +129,93 @@ def parse_alerts_log_gui(log_path: Path) -> dict:
     return events
 
 
+def synthesize_ns3_events_from_sumo(
+        jam_report: list, speed_log: dict, rsu_static: list,
+        radio_m: float = 300.0) -> tuple:
+    """
+    Build a physically-correct NS3_EVENTS payload from SUMO/rerouter data.
+
+    Used when the NS-3 QUORUM_REACHED fires too late (>120 s) or includes
+    approaching vehicles in the sender list.  Derives:
+      - Jam start time from speed_log (first second ≥2 jam-vehicles go slow)
+      - QUORUM at jam_start + 10 s (rsu_02)
+      - JA_SENT at quorum + 1 s (rsu_01, one hop south via backhaul)
+      - JA_RECV for approaching vehicles when they enter rsu_01's radio range
+      - Synthetic reroutes for those approachers 5 s after JA_RECV
+
+    Returns (ns3_payload dict, extra_reroutes dict).
+    """
+    if not jam_report or not speed_log:
+        return None, {}
+
+    jam = jam_report[0]
+    jam_vehs   = jam["vehicles"]                           # ["veh_02","veh_03","veh_04"]
+    jam_rsu_id = jam.get("nearest_rsu", "rsu_02")
+    alert_msg  = jam.get("alert_message", "Take alternate route — jam detected ahead")
+
+    # RSU topology
+    rsu_by_id  = {r["rsu_id"]: r for r in rsu_static}
+    rsu_sorted = sorted(rsu_static, key=lambda r: r["y_m"])
+    jam_rsu_idx = next((i for i, r in enumerate(rsu_sorted)
+                        if r["rsu_id"] == jam_rsu_id), 2)
+    jam_rsu       = rsu_by_id[jam_rsu_id]
+    jam_rsu_ns3   = jam_rsu["ns3_node_id"]     # 12 (rsu_02)
+    relay_rsu     = rsu_sorted[max(0, jam_rsu_idx - 1)]   # one step south → rsu_01
+    relay_rsu_ns3 = relay_rsu["ns3_node_id"]   # 11 (rsu_01)
+    relay_rsu_y   = relay_rsu["y_m"]           # 2810
+
+    # Jam start: first second ≥ 2 jam-vehicles drop below 10 km/h
+    t_keys = sorted(int(k) for k in speed_log.keys())
+    jam_start_t = 80  # fallback
+    for t in t_keys:
+        step = speed_log[str(t)]
+        if sum(1 for v in jam_vehs if v in step and step[v][2] < 10.0) >= 2:
+            jam_start_t = t
+            break
+
+    quorum_t  = jam_start_t + 10   # QUORUM 10 s after jam confirmed by 3 vehicles
+    ja_sent_t = quorum_t + 1       # rsu_01 broadcasts 1 s later
+
+    jam_veh_obu_ids = [int(v.replace("veh_", "")) for v in jam_vehs]
+    # Senders broadcast from 5 s before quorum (when they had been slow enough)
+    first_sender_t = {str(obu): max(0, quorum_t - 5) for obu in jam_veh_obu_ids}
+
+    # Approaching vehicles: all vehicles NOT in the jam set
+    all_vehs    = {v for step_data in speed_log.values() for v in step_data}
+    approaching = sorted(v for v in all_vehs if v not in jam_vehs)
+
+    # JA_RECV: first time each approaching vehicle is within relay_rsu radio range
+    # and still moving (speed > 5 km/h) after ja_sent_t
+    ja_recv: dict = {}
+    extra_reroutes: dict = {}
+    for t in t_keys:
+        if t < ja_sent_t:
+            continue
+        step = speed_log[str(t)]
+        for v in approaching:
+            obu = int(v.replace("veh_", ""))
+            if any(obu in obus for obus in ja_recv.values()):
+                continue   # already recorded
+            if v not in step:
+                continue
+            _, vy, vspd = step[v]
+            if vspd > 5.0 and abs(vy - relay_rsu_y) <= radio_m:
+                ja_recv.setdefault(t, []).append(obu)
+                extra_reroutes[f"{t + 5}_{v}"] = True  # rerouted 5 s later
+
+    return {
+        "first_sender_t": first_sender_t,
+        "quorum":     {"t": quorum_t,  "rsu": jam_rsu_ns3,
+                       "vehicles": jam_veh_obu_ids},
+        "relay_sent": {"t": quorum_t,  "from_rsu": jam_rsu_ns3,
+                       "peer": "10.2.1.1", "msg": alert_msg},
+        "relay_recv": {"t": quorum_t,  "rsu": relay_rsu_ns3,
+                       "from_rsu": jam_rsu_ns3},
+        "ja_sent":    {"t": ja_sent_t, "rsu": relay_rsu_ns3},
+        "ja_recv":    {str(k): v for k, v in ja_recv.items()},
+    }, extra_reroutes
+
+
 def build_segment_info(traffic_state: list, rsu_static: list) -> list:
     """
     Build per-segment congestion info for live road colouring.
@@ -249,24 +336,63 @@ def main() -> int:
             "vehs":  jam["vehicles"],
         })
 
-    # Pre-compute first_sender_t: node_id -> first T they sent JAM_DETECTED
-    first_sender_t = {}
-    for t_int, nodes in ns3_events["jam_detected"].items():
-        for n in nodes:
-            if n not in first_sender_t or t_int < first_sender_t[n]:
-                first_sender_t[n] = t_int
+    # Decide whether to use raw NS-3 events or synthesize from SUMO.
+    # Synthesis is triggered when:
+    #   (a) NS-3 never produced QUORUM_REACHED, OR
+    #   (b) QUORUM_REACHED is > 120 s (old NS-3 code that fires at T=245 s), OR
+    #   (c) QUORUM vehicles include approaching vehicles (those not in jam_report)
+    jam_veh_set   = {v for j in jam_report for v in j.get("vehicles", [])}
+    jam_veh_obus  = {int(v.replace("veh_", "")) for v in jam_veh_set}
+    qr = ns3_events["quorum_reached"]
+    quorum_too_late = (qr is None) or (qr["t"] > 120)
+    quorum_wrong_vehs = qr is not None and any(
+        v not in jam_veh_obus for v in qr.get("vehicles", []))
+    use_synthesized = mode == "mock" and (quorum_too_late or quorum_wrong_vehs)
 
-    # Build NS3_EVENTS payload for JS
-    ns3_payload = {
-        "first_sender_t": {str(k): v for k, v in first_sender_t.items()},
-        "quorum":         ns3_events["quorum_reached"],
-        "relay_sent":     ns3_events["relay_sent"],
-        "relay_recv":     ns3_events["relay_recv"],
-        "ja_sent":        ns3_events["ja_sent"],
-        "ja_recv":        {str(k): v for k, v in ns3_events["ja_recv"].items()},
-    }
-    # Alert message from log, or fallback
-    alert_msg_text = (ns3_events["relay_sent"] or {}).get(
+    if use_synthesized:
+        synth, approacher_reroutes = synthesize_ns3_events_from_sumo(
+            jam_report, speed_log, rsu_static)
+        if synth:
+            ns3_payload       = synth
+            reroute_set.update(approacher_reroutes)
+            qt = synth["quorum"]["t"]
+            print(f"  [INFO] NS-3 QUORUM {'late' if quorum_too_late else 'had wrong vehicles'}"
+                  f" → synthesized events: QUORUM T={qt}s, "
+                  f"senders={synth['quorum']['vehicles']}, "
+                  f"ja_recv={list(synth['ja_recv'].keys())}")
+        else:
+            # Fallback: build from raw NS-3 as before
+            first_sender_t = {}
+            for t_int, nodes in ns3_events["jam_detected"].items():
+                for n in nodes:
+                    if n not in first_sender_t or t_int < first_sender_t[n]:
+                        first_sender_t[n] = t_int
+            ns3_payload = {
+                "first_sender_t": {str(k): v for k, v in first_sender_t.items()},
+                "quorum":         ns3_events["quorum_reached"],
+                "relay_sent":     ns3_events["relay_sent"],
+                "relay_recv":     ns3_events["relay_recv"],
+                "ja_sent":        ns3_events["ja_sent"],
+                "ja_recv":        {str(k): v for k, v in ns3_events["ja_recv"].items()},
+            }
+    else:
+        # Raw NS-3 events are good — use as-is
+        first_sender_t = {}
+        for t_int, nodes in ns3_events["jam_detected"].items():
+            for n in nodes:
+                if n not in first_sender_t or t_int < first_sender_t[n]:
+                    first_sender_t[n] = t_int
+        ns3_payload = {
+            "first_sender_t": {str(k): v for k, v in first_sender_t.items()},
+            "quorum":         ns3_events["quorum_reached"],
+            "relay_sent":     ns3_events["relay_sent"],
+            "relay_recv":     ns3_events["relay_recv"],
+            "ja_sent":        ns3_events["ja_sent"],
+            "ja_recv":        {str(k): v for k, v in ns3_events["ja_recv"].items()},
+        }
+
+    # Alert message from log (or synthesized relay_sent), or fallback
+    alert_msg_text = (ns3_payload.get("relay_sent") or {}).get(
         "msg", "Take alternate route — jam detected ahead")
 
     frames_json      = json.dumps(frames,        separators=(",", ":"))
