@@ -164,12 +164,21 @@ def synthesize_ns3_events_from_sumo(
     relay_rsu_ns3 = relay_rsu["ns3_node_id"]   # 11 (rsu_01)
     relay_rsu_y   = relay_rsu["y_m"]           # 2810
 
+    # Helper: get y-coordinate and speed from a speed_log step entry.
+    # speed_log values may be raw dicts {"x":..,"y":..,"speed_kmh":..}
+    # OR compact lists [x, y, speed_kmh] (built by build_compact_frames).
+    def _y(entry):
+        return entry["y"] if isinstance(entry, dict) else entry[1]
+
+    def _spd(entry):
+        return entry["speed_kmh"] if isinstance(entry, dict) else entry[2]
+
     # Jam start: first second ≥ 2 jam-vehicles drop below 10 km/h
     t_keys = sorted(int(k) for k in speed_log.keys())
     jam_start_t = 80  # fallback
     for t in t_keys:
         step = speed_log[str(t)]
-        if sum(1 for v in jam_vehs if v in step and step[v][2] < 10.0) >= 2:
+        if sum(1 for v in jam_vehs if v in step and _spd(step[v]) < 10.0) >= 2:
             jam_start_t = t
             break
 
@@ -198,7 +207,8 @@ def synthesize_ns3_events_from_sumo(
                 continue   # already recorded
             if v not in step:
                 continue
-            _, vy, vspd = step[v]
+            vy   = _y(step[v])
+            vspd = _spd(step[v])
             if vspd > 5.0 and abs(vy - relay_rsu_y) <= radio_m:
                 ja_recv.setdefault(t, []).append(obu)
                 extra_reroutes[f"{t + 5}_{v}"] = True  # rerouted 5 s later

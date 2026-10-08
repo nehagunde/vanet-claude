@@ -19,17 +19,27 @@ from io import BytesIO
 from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-PROJECT_ROOT    = Path(__file__).resolve().parent.parent
-SPEED_LOG_JSON  = PROJECT_ROOT / "sim"    / "bridge" / "speed_log.json"
-RSU_STATIC_JSON = PROJECT_ROOT / "sim"    / "bridge" / "rsu_static.json"
-JAM_REPORT_JSON = PROJECT_ROOT / "output" / "jam_report.json"
-REROUTE_LOG_JSON= PROJECT_ROOT / "output" / "reroute_log.json"
-ALERTS_LOG      = PROJECT_ROOT / "output" / "alerts.log"
-RSU_CSV         = PROJECT_ROOT / "corridor" / "rsu_positions.csv"
+PROJECT_ROOT      = Path(__file__).resolve().parent.parent
+SPEED_LOG_JSON    = PROJECT_ROOT / "sim"      / "bridge" / "speed_log.json"
+RSU_STATIC_JSON   = PROJECT_ROOT / "sim"      / "bridge" / "rsu_static.json"
+JAM_REPORT_JSON   = PROJECT_ROOT / "output"   / "jam_report.json"
+REROUTE_LOG_JSON  = PROJECT_ROOT / "output"   / "reroute_log.json"
+ALERTS_LOG        = PROJECT_ROOT / "output"   / "alerts.log"
+RSU_CSV           = PROJECT_ROOT / "corridor" / "rsu_positions.csv"
+TRAFFIC_STATE_JSON= PROJECT_ROOT / "corridor" / "traffic_state.json"
 
 OUT_DIR         = PROJECT_ROOT / "output" / "screenshots"
 SPEED_CHART_PNG = OUT_DIR / "speed_chart.png"
 HTML_OUT        = PROJECT_ROOT / "output" / "vanet_summary.html"
+
+CONGESTION_COLOURS = {
+    "free":     "#3fb950",
+    "light":    "#7ee787",
+    "moderate": "#ffbe0b",
+    "heavy":    "#ff8c00",
+    "slow":     "#ff8c00",
+    "jam":      "#ff4444",
+}
 
 
 # ── Data loaders ──────────────────────────────────────────────────────────────
@@ -141,7 +151,8 @@ def make_speed_chart(speed_log: dict, jam_report: list) -> bytes:
 
 def make_html(rsus: list[dict], jam_report: list, reroute_log: dict,
               alerts_lines: list[str], chart_b64: str,
-              speed_log: dict, mode: str = "mock") -> str:
+              speed_log: dict, mode: str = "mock",
+              traffic_state: dict = None) -> str:
 
     # ── Stats ─────────────────────────────────────────────────────────────────
     n_vehicles = 0
@@ -154,6 +165,18 @@ def make_html(rsus: list[dict], jam_report: list, reroute_log: dict,
     n_jams     = len(jam_report)
     n_rerouted = reroute_log.get("summary", {}).get("total_vehicles_rerouted", 0)
     n_alerts   = sum(1 for ln in alerts_lines if "JAM_ALERT" in ln or "REROUTE" in ln)
+
+    # Live mode: parse traffic_state segments
+    live_segments  = []
+    live_source    = "unknown"
+    live_fetched   = ""
+    if mode == "live" and traffic_state:
+        if isinstance(traffic_state, dict):
+            live_segments = traffic_state.get("segments", [])
+            live_source   = traffic_state.get("source", "unknown")
+            live_fetched  = traffic_state.get("fetched_at", "")
+        elif isinstance(traffic_state, list):
+            live_segments = traffic_state
 
     jam_edge    = jam_report[0]["edge"][:20]    if jam_report else "—"
     jam_time    = jam_report[0]["start_s"]       if jam_report else "—"
@@ -249,23 +272,39 @@ def make_html(rsus: list[dict], jam_report: list, reroute_log: dict,
       <text x="{sx}" y="97" text-anchor="middle"
             fill="#aaa" font-size="9">{r['area']}</text>'''
 
-    # Derive jam segment RSU IDs from actual jam_report data
-    jam_from_rsu = ""
-    jam_to_rsu   = ""
-    if jam_report:
-        # nearest_rsu is e.g. "rsu_02"; find adjacent RSU for the to-end
+    # Corridor map segment overlays
+    jam_svg = ""
+    rsu_dict_map = {r["id"]: r for r in rsus}
+
+    if mode == "live" and live_segments:
+        # Color each segment by Google Maps congestion level
+        for seg in live_segments:
+            fr = rsu_dict_map.get(seg.get("from_rsu", ""))
+            to = rsu_dict_map.get(seg.get("to_rsu",   ""))
+            if not fr or not to:
+                continue
+            x1  = rsu_svg_x(fr)
+            x2  = rsu_svg_x(to)
+            col = CONGESTION_COLOURS.get(seg.get("congestion_level", "free"), "#3fb950")
+            spd = seg.get("speed_kmh", 50)
+            lvl = seg.get("congestion_level", "free").upper()
+            jam_svg += f'''
+      <rect x="{x1}" y="53" width="{x2-x1}" height="14"
+            fill="{col}" opacity="0.5" rx="3"/>
+      <text x="{(x1+x2)/2}" y="44" text-anchor="middle"
+            fill="{col}" font-size="9" font-weight="bold">{lvl} {spd:.0f}km/h</text>'''
+    elif jam_report and rsus:
+        # Mock mode: highlight jam segment in red
+        jam_from_rsu = ""
+        jam_to_rsu   = ""
         nr = jam_report[0].get("nearest_rsu", "")
         rsu_ids = [r["id"] for r in rsus]
         if nr in rsu_ids:
             idx = rsu_ids.index(nr)
             jam_from_rsu = nr
             jam_to_rsu   = rsu_ids[idx + 1] if idx + 1 < len(rsu_ids) else nr
-
-    jam_svg = ""
-    if jam_report and rsus:
-        rsu_dict = {r["id"]: r for r in rsus}
-        fr = rsu_dict.get(jam_from_rsu)
-        to = rsu_dict.get(jam_to_rsu)
+        fr = rsu_dict_map.get(jam_from_rsu)
+        to = rsu_dict_map.get(jam_to_rsu)
         if fr and to:
             x1 = rsu_svg_x(fr)
             x2 = rsu_svg_x(to)
@@ -381,19 +420,19 @@ def make_html(rsus: list[dict], jam_report: list, reroute_log: dict,
   <div class="kpi-grid">
     <div class="kpi">
       <div class="val">{len(rsus)}</div>
-      <div class="lbl">RSU Nodes (Fixed)</div>
+      <div class="lbl">RSU Nodes Deployed</div>
     </div>
     <div class="kpi">
-      <div class="val">{n_vehicles}</div>
-      <div class="lbl">OBU Vehicles (Mobile)</div>
+      <div class="val">{len(live_segments) if mode == 'live' and live_segments else n_vehicles}</div>
+      <div class="lbl">{'Segments Monitored' if mode == 'live' else 'OBU Vehicles'}</div>
     </div>
-    <div class="kpi danger">
-      <div class="val">{n_jams}</div>
-      <div class="lbl">Jam Events Detected</div>
+    <div class="kpi {'danger' if (mode=='live' and any(s.get('congestion_level') in ('jam','heavy') for s in live_segments)) or (mode=='mock' and n_jams>0) else 'warn'}">
+      <div class="val">{'🔴' if mode=='live' and any(s.get('congestion_level') in ('jam','heavy') for s in live_segments) else ('⚠' if mode=='mock' and n_jams > 0 else '✅')}</div>
+      <div class="lbl">{'Congestion Detected' if mode == 'live' else 'Jam Events'}</div>
     </div>
     <div class="kpi ok">
-      <div class="val">{n_rerouted}</div>
-      <div class="lbl">Vehicles Rerouted</div>
+      <div class="val">{round(sum(s.get('speed_kmh',50) for s in live_segments)/len(live_segments),1) if mode=='live' and live_segments else n_rerouted}</div>
+      <div class="lbl">{'Avg Corridor Speed (km/h)' if mode == 'live' else 'Vehicles Rerouted'}</div>
     </div>
   </div>
 
@@ -423,6 +462,52 @@ def make_html(rsus: list[dict], jam_report: list, reroute_log: dict,
       <span style="color:#ff4444">■ Red band</span> = Jam segment ({jam_seg_label})
     </p>
   </div>
+
+  {'<!-- Live Traffic Card -->' if mode == 'live' else ''}
+  {f"""
+  <div class="card">
+    <h2>🚦 Real-Time Traffic Levels — NH-16 Corridor
+      <span style="font-size:0.7rem;color:#8b949e;font-weight:normal;margin-left:8px;">
+        Source: {'Google Maps API' if live_source == 'google_maps' else live_source.upper()}
+        {'&nbsp;·&nbsp;Fetched: ' + live_fetched[:19] + ' IST' if live_fetched else ''}
+      </span>
+    </h2>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>From RSU</th><th>To RSU</th>
+          <th>Congestion Level</th><th>Speed</th><th>Dist (km)</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {''.join(
+          f"""<tr>
+            <td>{i+1}</td>
+            <td>{s.get('from_rsu','?')}</td>
+            <td>{s.get('to_rsu','?')}</td>
+            <td><span style="background:{CONGESTION_COLOURS.get(s.get('congestion_level','free'),'#3fb950')}22;
+                color:{CONGESTION_COLOURS.get(s.get('congestion_level','free'),'#3fb950')};
+                padding:2px 10px;border-radius:12px;font-weight:bold;font-size:0.8rem;
+                border:1px solid {CONGESTION_COLOURS.get(s.get('congestion_level','free'),'#3fb950')}66">
+                {s.get('congestion_level','free').upper()}</span></td>
+            <td style="color:{CONGESTION_COLOURS.get(s.get('congestion_level','free'),'#3fb950')};font-weight:bold">
+                {s.get('speed_kmh',50):.1f} km/h</td>
+            <td>{s.get('distance_m',0)/1000:.2f}</td>
+            <td>{'🔴 Congested' if s.get('congestion_level') in ('jam','heavy') else
+                 '🟠 Slow' if s.get('congestion_level') == 'moderate' else
+                 '🟢 Clear'}</td>
+          </tr>""" for i, s in enumerate(live_segments)
+        ) or '<tr><td colspan="7">No segment data — run fetch_traffic.py first</td></tr>'}
+      </tbody>
+    </table>
+    <p style="color:#8b949e;font-size:0.8rem;margin-top:10px;">
+      <span style="color:#3fb950">■</span> Free/Light &nbsp;|&nbsp;
+      <span style="color:#ffbe0b">■</span> Moderate &nbsp;|&nbsp;
+      <span style="color:#ff8c00">■</span> Heavy &nbsp;|&nbsp;
+      <span style="color:#ff4444">■</span> Jam
+    </p>
+  </div>
+  """ if mode == 'live' else ''}
 
   <!-- Speed Chart -->
   <div class="card">
@@ -570,9 +655,15 @@ def main() -> int:
         print(f"  Speed chart → {chart_png}")
     chart_b64 = base64.b64encode(chart_bytes).decode() if chart_bytes else ""
 
+    traffic_state = load_json(TRAFFIC_STATE_JSON, {}) if mode == "live" else {}
+    if mode == "live" and traffic_state:
+        segs = traffic_state.get("segments", []) if isinstance(traffic_state, dict) else traffic_state
+        print(f"  traffic_state: {len(segs)} segment(s) from {traffic_state.get('source','?') if isinstance(traffic_state, dict) else 'legacy'}")
+
     print("Generating HTML dashboard ...")
     html = make_html(rsus, jam_report, reroute_log,
-                     alerts_lines, chart_b64, speed_log, mode)
+                     alerts_lines, chart_b64, speed_log, mode,
+                     traffic_state=traffic_state)
     html_out.write_text(html, encoding="utf-8")
     print(f"  Dashboard   → {html_out}")
 

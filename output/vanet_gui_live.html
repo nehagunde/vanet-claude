@@ -205,9 +205,9 @@ const FRAMES        = {"1":{"veh_00":[3310.0,1855.1,50.0]},"2":{"veh_00":[3301.8
 const RSU_INFO      = [{"ns3_id":10,"id":"rsu_00","area":"Old Gajuwaka","x":3320.99,"y":1846.97},{"ns3_id":11,"id":"rsu_01","area":"New Gajuwaka","x":3483.1,"y":2810.81},{"ns3_id":12,"id":"rsu_02","area":"BHPV","x":3484.99,"y":3781.42},{"ns3_id":13,"id":"rsu_03","area":"Nathayyapalem","x":3425.37,"y":4689.2},{"ns3_id":14,"id":"rsu_04","area":"Sheelanagar","x":3245.36,"y":5579.66},{"ns3_id":15,"id":"rsu_05","area":"Gopalapatnam","x":3463.72,"y":6136.56},{"ns3_id":16,"id":"rsu_06","area":"NAD Junction","x":5307.99,"y":7097.46}];
 const JAM_EVENTS    = [{"start":200,"end":337,"edge":"544537085#3","rsu":"rsu_02","speed":3.41,"vehs":["veh_02","veh_03","veh_04"]}];
 const REROUTES      = {"98_veh_00":true,"98_veh_01":true};
-const SEGMENT_INFO  = [{"fi":0,"ti":1,"level":"light","colour":"#7ee787","speed":20.5,"ratio":1.24,"dist_km":1.18,"label":"rsu_00 \u2192 rsu_01"},{"fi":1,"ti":2,"level":"light","colour":"#7ee787","speed":24.2,"ratio":1.14,"dist_km":3.1,"label":"rsu_01 \u2192 rsu_02"},{"fi":2,"ti":3,"level":"light","colour":"#7ee787","speed":27.2,"ratio":1.26,"dist_km":2.26,"label":"rsu_02 \u2192 rsu_03"},{"fi":3,"ti":4,"level":"moderate","colour":"#ffbe0b","speed":21.4,"ratio":1.32,"dist_km":1.94,"label":"rsu_03 \u2192 rsu_04"},{"fi":4,"ti":5,"level":"free","colour":"#3fb950","speed":38.1,"ratio":1.06,"dist_km":4.93,"label":"rsu_04 \u2192 rsu_05"},{"fi":5,"ti":6,"level":"light","colour":"#7ee787","speed":29.1,"ratio":1.25,"dist_km":3.27,"label":"rsu_05 \u2192 rsu_06"}];   // live mode: Google Maps congestion per segment
+const SEGMENT_INFO  = [{"fi":0,"ti":1,"level":"moderate","colour":"#ffbe0b","speed":18.0,"ratio":1.41,"dist_km":1.18,"label":"rsu_00 \u2192 rsu_01"},{"fi":1,"ti":2,"level":"light","colour":"#7ee787","speed":21.8,"ratio":1.26,"dist_km":3.1,"label":"rsu_01 \u2192 rsu_02"},{"fi":2,"ti":3,"level":"light","colour":"#7ee787","speed":27.3,"ratio":1.15,"dist_km":2.25,"label":"rsu_02 \u2192 rsu_03"},{"fi":3,"ti":4,"level":"moderate","colour":"#ffbe0b","speed":20.7,"ratio":1.48,"dist_km":1.94,"label":"rsu_03 \u2192 rsu_04"},{"fi":4,"ti":5,"level":"free","colour":"#3fb950","speed":38.3,"ratio":1.06,"dist_km":4.93,"label":"rsu_04 \u2192 rsu_05"},{"fi":5,"ti":6,"level":"light","colour":"#7ee787","speed":31.3,"ratio":1.16,"dist_km":3.27,"label":"rsu_05 \u2192 rsu_06"}];   // live mode: Google Maps congestion per segment
 const SIM_MODE      = "live";
-const FETCHED_AT    = "2026-10-08T17:25:15+05:30";        // ISO timestamp from traffic_state.json
+const FETCHED_AT    = "2026-10-08T18:03:37+05:30";        // ISO timestamp from traffic_state.json
 const LIVE_SOURCE   = "google_maps";       // "google_maps" or "mock"
 
 // NS-3 events from output/v2/alerts.log — NOT inferred from vehicle speeds
@@ -863,23 +863,27 @@ function draw() {
     const senderNames = (q.vehicles || []).length > 0
       ? (q.vehicles || []).map(n => "V" + String(n).padStart(2, "0")).join(", ")
       : "V02, V03, V04";
-    // Receiver names from ja_recv log
-    const allRecv = Object.values(NS3_EVENTS.ja_recv).flat();
-    const recvText = allRecv.length > 0
-      ? allRecv.map(n => "V"+String(n).padStart(2,"0")).join(", ")
-      : "Awaiting 802.11p reception";
+    // Receiver names: only OBUs that have ALREADY received JAM_ALERT by time t
+    const recvSoFar = [];
+    for (const [tStr, nodes] of Object.entries(NS3_EVENTS.ja_recv)) {
+      if (parseInt(tStr, 10) <= t) recvSoFar.push(...nodes);
+    }
+    const uniqueRecv = [...new Set(recvSoFar)].sort((a,b)=>a-b);
+    const recvText = uniqueRecv.length > 0
+      ? uniqueRecv.map(n => "V"+String(n).padStart(2,"0")).join(", ")
+      : "Awaiting 802.11p reception →";
     const relayRsu   = alertRsuNode ? alertRsuNode.id : "rsu_01";
     const jamRsuLabel = jamRsuNode  ? jamRsuNode.id   : "rsu_02";
     banner.innerHTML =
-      `<div class="banner-title">⚠️ QUORUM_REACHED — Jam confirmed at ${jamRsuLabel} (T=${bt}s)</div>` +
+      `<div class="banner-title">⚠️ JAM DETECTED at ${jamRsuLabel} (BHPV) — QUORUM_REACHED T=${bt}s</div>` +
       `<div class="banner-grid">` +
         `<div class="banner-box sender">` +
-          `<div class="banner-box-title">📡 Senders (JAM_DETECTED)</div>` +
+          `<div class="banner-box-title">📡 Senders — JAM_DETECTED (${jamRsuLabel})</div>` +
           `<div class="banner-vehs">${senderNames || "—"}</div>` +
-          `<div style="font-size:0.75rem;color:#cc88ff;margin-top:4px">→ Relayed via ${relayRsu}</div>` +
+          `<div style="font-size:0.75rem;color:#cc88ff;margin-top:4px">📶 ${jamRsuLabel} → ${relayRsu} (backhaul relay)</div>` +
         `</div>` +
         `<div class="banner-box receiver">` +
-          `<div class="banner-box-title">📻 Receivers (JAM_ALERT_RECV)</div>` +
+          `<div class="banner-box-title">📻 Receivers — JAM_ALERT_RECV (${relayRsu})</div>` +
           `<div class="banner-vehs" style="font-size:0.8rem">${recvText}</div>` +
         `</div>` +
       `</div>` +

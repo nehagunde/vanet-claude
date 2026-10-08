@@ -96,19 +96,19 @@
   <div class="kpi-grid">
     <div class="kpi">
       <div class="val">7</div>
-      <div class="lbl">RSU Nodes (Fixed)</div>
+      <div class="lbl">RSU Nodes Deployed</div>
     </div>
     <div class="kpi">
-      <div class="val">10</div>
-      <div class="lbl">OBU Vehicles (Mobile)</div>
+      <div class="val">6</div>
+      <div class="lbl">Segments Monitored</div>
     </div>
-    <div class="kpi danger">
-      <div class="val">1</div>
-      <div class="lbl">Jam Events Detected</div>
+    <div class="kpi warn">
+      <div class="val">✅</div>
+      <div class="lbl">Congestion Detected</div>
     </div>
     <div class="kpi ok">
-      <div class="val">3</div>
-      <div class="lbl">Vehicles Rerouted</div>
+      <div class="val">26.2</div>
+      <div class="lbl">Avg Corridor Speed (km/h)</div>
     </div>
   </div>
 
@@ -124,10 +124,30 @@
               stroke="#444c56" stroke-width="4" stroke-dasharray="20,10"/>
         <!-- Jam highlight -->
         
-      <rect x="384.4" y="50" width="152.10000000000002" height="20"
-            fill="#ff4444" opacity="0.35" rx="4"/>
+      <rect x="60.2" y="53" width="161.5" height="14"
+            fill="#ffbe0b" opacity="0.5" rx="3"/>
+      <text x="140.95" y="44" text-anchor="middle"
+            fill="#ffbe0b" font-size="9" font-weight="bold">MODERATE 18km/h</text>
+      <rect x="221.7" y="53" width="162.7" height="14"
+            fill="#7ee787" opacity="0.5" rx="3"/>
+      <text x="303.04999999999995" y="44" text-anchor="middle"
+            fill="#7ee787" font-size="9" font-weight="bold">LIGHT 22km/h</text>
+      <rect x="384.4" y="53" width="152.10000000000002" height="14"
+            fill="#7ee787" opacity="0.5" rx="3"/>
       <text x="460.45" y="44" text-anchor="middle"
-            fill="#ff6b6b" font-size="10" font-weight="bold">⚠ JAM</text>
+            fill="#7ee787" font-size="9" font-weight="bold">LIGHT 27km/h</text>
+      <rect x="536.5" y="53" width="149.20000000000005" height="14"
+            fill="#ffbe0b" opacity="0.5" rx="3"/>
+      <text x="611.1" y="44" text-anchor="middle"
+            fill="#ffbe0b" font-size="9" font-weight="bold">MODERATE 21km/h</text>
+      <rect x="685.7" y="53" width="93.29999999999995" height="14"
+            fill="#3fb950" opacity="0.5" rx="3"/>
+      <text x="732.35" y="44" text-anchor="middle"
+            fill="#3fb950" font-size="9" font-weight="bold">FREE 38km/h</text>
+      <rect x="779.0" y="53" width="161.10000000000002" height="14"
+            fill="#7ee787" opacity="0.5" rx="3"/>
+      <text x="859.55" y="44" text-anchor="middle"
+            fill="#7ee787" font-size="9" font-weight="bold">LIGHT 31km/h</text>
         <!-- RSU markers -->
         
       <circle cx="60.2" cy="60" r="10" fill="#00b4d8" stroke="white" stroke-width="2"/>
@@ -177,6 +197,113 @@
       <span style="color:#ff4444">■ Red band</span> = Jam segment (BHPV–Nathayyapalem)
     </p>
   </div>
+
+  <!-- Live Traffic Card -->
+  
+  <div class="card">
+    <h2>🚦 Real-Time Traffic Levels — NH-16 Corridor
+      <span style="font-size:0.7rem;color:#8b949e;font-weight:normal;margin-left:8px;">
+        Source: Google Maps API
+        &nbsp;·&nbsp;Fetched: 2026-10-08T18:03:37 IST
+      </span>
+    </h2>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>From RSU</th><th>To RSU</th>
+          <th>Congestion Level</th><th>Speed</th><th>Dist (km)</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+            <td>1</td>
+            <td>rsu_00</td>
+            <td>rsu_01</td>
+            <td><span style="background:#ffbe0b22;
+                color:#ffbe0b;
+                padding:2px 10px;border-radius:12px;font-weight:bold;font-size:0.8rem;
+                border:1px solid #ffbe0b66">
+                MODERATE</span></td>
+            <td style="color:#ffbe0b;font-weight:bold">
+                18.0 km/h</td>
+            <td>1.18</td>
+            <td>🟠 Slow</td>
+          </tr><tr>
+            <td>2</td>
+            <td>rsu_01</td>
+            <td>rsu_02</td>
+            <td><span style="background:#7ee78722;
+                color:#7ee787;
+                padding:2px 10px;border-radius:12px;font-weight:bold;font-size:0.8rem;
+                border:1px solid #7ee78766">
+                LIGHT</span></td>
+            <td style="color:#7ee787;font-weight:bold">
+                21.8 km/h</td>
+            <td>3.10</td>
+            <td>🟢 Clear</td>
+          </tr><tr>
+            <td>3</td>
+            <td>rsu_02</td>
+            <td>rsu_03</td>
+            <td><span style="background:#7ee78722;
+                color:#7ee787;
+                padding:2px 10px;border-radius:12px;font-weight:bold;font-size:0.8rem;
+                border:1px solid #7ee78766">
+                LIGHT</span></td>
+            <td style="color:#7ee787;font-weight:bold">
+                27.3 km/h</td>
+            <td>2.25</td>
+            <td>🟢 Clear</td>
+          </tr><tr>
+            <td>4</td>
+            <td>rsu_03</td>
+            <td>rsu_04</td>
+            <td><span style="background:#ffbe0b22;
+                color:#ffbe0b;
+                padding:2px 10px;border-radius:12px;font-weight:bold;font-size:0.8rem;
+                border:1px solid #ffbe0b66">
+                MODERATE</span></td>
+            <td style="color:#ffbe0b;font-weight:bold">
+                20.7 km/h</td>
+            <td>1.94</td>
+            <td>🟠 Slow</td>
+          </tr><tr>
+            <td>5</td>
+            <td>rsu_04</td>
+            <td>rsu_05</td>
+            <td><span style="background:#3fb95022;
+                color:#3fb950;
+                padding:2px 10px;border-radius:12px;font-weight:bold;font-size:0.8rem;
+                border:1px solid #3fb95066">
+                FREE</span></td>
+            <td style="color:#3fb950;font-weight:bold">
+                38.3 km/h</td>
+            <td>4.93</td>
+            <td>🟢 Clear</td>
+          </tr><tr>
+            <td>6</td>
+            <td>rsu_05</td>
+            <td>rsu_06</td>
+            <td><span style="background:#7ee78722;
+                color:#7ee787;
+                padding:2px 10px;border-radius:12px;font-weight:bold;font-size:0.8rem;
+                border:1px solid #7ee78766">
+                LIGHT</span></td>
+            <td style="color:#7ee787;font-weight:bold">
+                31.3 km/h</td>
+            <td>3.27</td>
+            <td>🟢 Clear</td>
+          </tr>
+      </tbody>
+    </table>
+    <p style="color:#8b949e;font-size:0.8rem;margin-top:10px;">
+      <span style="color:#3fb950">■</span> Free/Light &nbsp;|&nbsp;
+      <span style="color:#ffbe0b">■</span> Moderate &nbsp;|&nbsp;
+      <span style="color:#ff8c00">■</span> Heavy &nbsp;|&nbsp;
+      <span style="color:#ff4444">■</span> Jam
+    </p>
+  </div>
+  
 
   <!-- Speed Chart -->
   <div class="card">
