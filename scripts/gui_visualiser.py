@@ -174,11 +174,13 @@ def main() -> int:
     # traffic_state.json schema: {"fetched_at":..., "source":..., "segments":[...]}
     traffic_state = []
     live_source   = "unknown"
+    fetched_at    = ""
     if mode == "live":
         _raw_ts = load_json(TRAFFIC_STATE_JSON, {})
         if isinstance(_raw_ts, dict):
             traffic_state = _raw_ts.get("segments", [])
             live_source   = _raw_ts.get("source", "unknown")
+            fetched_at    = _raw_ts.get("fetched_at", "")
         elif isinstance(_raw_ts, list):
             traffic_state = _raw_ts   # legacy flat list
         if traffic_state:
@@ -483,6 +485,8 @@ const JAM_EVENTS    = {jam_json};
 const REROUTES      = {reroute_json};
 const SEGMENT_INFO  = {segment_info_json};   // live mode: Google Maps congestion per segment
 const SIM_MODE      = "{mode}";
+const FETCHED_AT    = "{fetched_at}";        // ISO timestamp from traffic_state.json
+const LIVE_SOURCE   = "{live_source}";       // "google_maps" or "mock"
 
 // NS-3 events from output/v2/alerts.log — NOT inferred from vehicle speeds
 const NS3_EVENTS  = {ns3_events_json};
