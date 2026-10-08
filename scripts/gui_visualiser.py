@@ -416,25 +416,25 @@ canvas {{ width: 100%; height: 100%; }}
       <div class="stats-grid">
         <div class="stat-box" id="stat-active">
           <div class="stat-val" id="sv-active">0</div>
-          <div class="stat-lbl">Active OBUs</div>
+          <div class="stat-lbl">{'Segments' if mode=='live' else 'Active OBUs'}</div>
         </div>
         <div class="stat-box" id="stat-links">
           <div class="stat-val" id="sv-links">0</div>
-          <div class="stat-lbl">Radio Links</div>
+          <div class="stat-lbl">{'RSU Nodes' if mode=='live' else 'Radio Links'}</div>
         </div>
         <div class="stat-box danger" id="stat-slow">
           <div class="stat-val" id="sv-slow">0</div>
-          <div class="stat-lbl">In Jam</div>
+          <div class="stat-lbl">{'Congested' if mode=='live' else 'In Jam'}</div>
         </div>
         <div class="stat-box ok" id="stat-rerouted">
           <div class="stat-val" id="sv-rerouted">0</div>
-          <div class="stat-lbl">Rerouted</div>
+          <div class="stat-lbl">{'Jam Segs' if mode=='live' else 'Rerouted'}</div>
         </div>
       </div>
     </div>
 
     <div>
-      <h3>Vehicle Speeds</h3>
+      <h3>{'Segment Speeds' if mode=='live' else 'Vehicle Speeds'}</h3>
       <div class="veh-list" id="veh-list"></div>
     </div>
 
@@ -595,8 +595,164 @@ function bannerDue(t) {{
   return bt !== null && t >= bt;
 }}
 
+// ── Live-mode draw — real Google Maps traffic ONLY, no simulation data ────────
+function drawLive() {{
+  const W = cvs.width, H = cvs.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#0d1117"); bg.addColorStop(1, "#161b22");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const rsus     = getRsuCanvas();
+  const road_pts = RSU_INFO.map(r => toCanvas(r.x, r.y));
+
+  // Road base
+  for (let i = 0; i < road_pts.length-1; i++) {{
+    const [x1,y1] = road_pts[i], [x2,y2] = road_pts[i+1];
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+    ctx.strokeStyle = "#30363d"; ctx.lineWidth = 24; ctx.lineCap = "round"; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+    ctx.strokeStyle = "#444c56"; ctx.lineWidth = 16; ctx.stroke();
+  }}
+
+  // Segment colours from Google Maps
+  if (SEGMENT_INFO.length > 0) {{
+    SEGMENT_INFO.forEach(seg => {{
+      const [x1,y1] = road_pts[seg.fi]||[0,0], [x2,y2] = road_pts[seg.ti]||[0,0];
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.strokeStyle = seg.colour+"dd"; ctx.lineWidth = 12; ctx.lineCap = "round"; ctx.stroke();
+      // Speed label
+      const mx=(x1+x2)/2, my=(y1+y2)/2-18;
+      ctx.fillStyle="rgba(0,0,0,0.72)"; ctx.beginPath();
+      ctx.roundRect(mx-32,my-11,64,16,3); ctx.fill();
+      ctx.fillStyle=seg.colour; ctx.font="bold 10px 'Segoe UI'"; ctx.textAlign="center";
+      ctx.fillText(seg.speed.toFixed(0)+" km/h", mx, my+1);
+      // Level badge
+      ctx.fillStyle=seg.colour+"22"; ctx.beginPath();
+      ctx.roundRect(mx-22,my+8,44,13,2); ctx.fill();
+      ctx.fillStyle=seg.colour; ctx.font="bold 8px 'Segoe UI'";
+      ctx.fillText(seg.level.toUpperCase(), mx, my+18);
+    }});
+    ctx.setLineDash([20,14]);
+    for (let i=0;i<road_pts.length-1;i++) {{
+      const [x1,y1]=road_pts[i],[x2,y2]=road_pts[i+1];
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+      ctx.strokeStyle="#ffffff22"; ctx.lineWidth=2; ctx.stroke();
+    }}
+    ctx.setLineDash([]);
+  }}
+
+  // RSU nodes
+  rsus.forEach(r => {{
+    const grad=ctx.createRadialGradient(r.cx,r.cy,0,r.cx,r.cy,18);
+    grad.addColorStop(0,"#00b4d866"); grad.addColorStop(1,"#00b4d800");
+    ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(r.cx,r.cy,18,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#00b4d8"; ctx.strokeStyle="#ffffff"; ctx.lineWidth=1.5;
+    ctx.beginPath(); const s=9; ctx.rect(r.cx-s,r.cy-s,s*2,s*2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r.cx,r.cy-s); ctx.lineTo(r.cx,r.cy-s-8);
+    ctx.strokeStyle="#00b4d8"; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle="#e6edf3"; ctx.font="bold 10px 'Segoe UI'"; ctx.textAlign="center";
+    ctx.fillText(r.id, r.cx, r.cy+s+14);
+    ctx.fillStyle="#8b949e"; ctx.font="9px 'Segoe UI'";
+    ctx.fillText(r.area, r.cx, r.cy+s+25);
+  }});
+
+  // Direction labels
+  ctx.fillStyle="#484f58"; ctx.font="bold 11px 'Segoe UI'";
+  ctx.textAlign="left";  ctx.fillText("◀ Gajuwaka (South)", 8, H/2+5);
+  ctx.textAlign="right"; ctx.fillText("NAD Junction (North) ▶", W-8, H/2+5);
+
+  // Header: fetch time instead of simulation time
+  const timeEl = document.getElementById("sim-time");
+  timeEl.style.fontSize = "1.1rem";
+  timeEl.textContent = FETCHED_AT ? FETCHED_AT.substring(11,16)+" IST" : "Live";
+  if (FETCHED_AT) timeEl.title = "Fetched at "+FETCHED_AT;
+
+  // Sidebar stats from real segment data
+  const jamSegs    = SEGMENT_INFO.filter(s=>s.level==="jam");
+  const heavySegs  = SEGMENT_INFO.filter(s=>s.level==="heavy");
+  const congested  = jamSegs.length + heavySegs.length;
+  const avgSpd     = SEGMENT_INFO.length > 0
+    ? (SEGMENT_INFO.reduce((a,s)=>a+s.speed,0)/SEGMENT_INFO.length).toFixed(1) : "--";
+  document.getElementById("sv-active").textContent   = SEGMENT_INFO.length;
+  document.getElementById("sv-links").textContent    = RSU_INFO.length;
+  document.getElementById("sv-slow").textContent     = congested;
+  document.getElementById("sv-rerouted").textContent = jamSegs.length;
+  document.getElementById("progress-bar").style.width = "100%";
+
+  // Segment speed list in sidebar
+  const listEl = document.getElementById("veh-list");
+  if (SEGMENT_INFO.length > 0) {{
+    listEl.innerHTML = SEGMENT_INFO.map(seg => {{
+      const col=seg.colour, pct=Math.min(100,seg.speed/60*100);
+      const shortLbl = seg.label.split("→")[0].trim().replace(/,.*/, "").substring(0,10);
+      return `<div class="veh-row">
+        <div class="veh-dot" style="background:${{col}}"></div>
+        <span class="veh-name" style="width:54px;font-size:0.68rem">${{shortLbl}}</span>
+        <div style="flex:1"><div class="veh-bar"><div class="veh-bar-fill"
+          style="width:${{pct}}%;background:${{col}}"></div></div></div>
+        <span class="veh-spd" style="color:${{col}}">${{seg.speed.toFixed(1)}} km/h</span>
+      </div>`;
+    }}).join("");
+  }} else {{
+    listEl.innerHTML='<div style="color:#484f58;font-size:0.78rem;padding:8px">Run fetch_traffic.py first</div>';
+  }}
+
+  // Alert banner: real-traffic summary (built once)
+  const banner = document.getElementById("alert-banner");
+  document.getElementById("reroute-flash").style.display="none";
+  if (!window._liveBannerBuilt) {{
+    window._liveBannerBuilt = true;
+    if (jamSegs.length > 0 || heavySegs.length > 0) {{
+      const congestSegs=[...jamSegs,...heavySegs];
+      const labels=congestSegs.map(s=>s.label).join(", ");
+      banner.style.borderColor="#ff4444"; banner.style.background="#1a0808";
+      banner.innerHTML=
+        `<div class="banner-title">⚠️ REAL JAM DETECTED — NH-16 Visakhapatnam</div>`+
+        `<div class="banner-grid">`+
+          `<div class="banner-box sender"><div class="banner-box-title">🚦 Congested Segments</div>`+
+            `<div class="banner-vehs" style="font-size:0.82rem">${{labels}}</div></div>`+
+          `<div class="banner-box receiver"><div class="banner-box-title">📊 Avg Corridor Speed</div>`+
+            `<div class="banner-vehs">${{avgSpd}} km/h</div></div>`+
+        `</div>`+
+        `<div class="banner-uturn">↩ VANET system would activate V2I jam alerts on these segments</div>`;
+      banner.style.display="block";
+    }} else {{
+      banner.style.borderColor="#3fb950"; banner.style.background="#0a1f0a";
+      banner.innerHTML=
+        `<div class="banner-title" style="color:#3fb950">✅ NH-16 CLEAR — No jams detected right now</div>`+
+        `<div class="banner-grid">`+
+          `<div class="banner-box sender" style="background:#0a1f0a;border-color:#3fb95055">`+
+            `<div class="banner-box-title" style="color:#7ee787">📡 Segments Monitored</div>`+
+            `<div class="banner-vehs" style="color:#7ee787">${{SEGMENT_INFO.length}} RSU corridors</div></div>`+
+          `<div class="banner-box receiver" style="background:#0a1f0a;border-color:#3fb95055">`+
+            `<div class="banner-box-title" style="color:#7ee787">🚗 Avg Corridor Speed</div>`+
+            `<div class="banner-vehs" style="color:#7ee787">${{avgSpd}} km/h</div></div>`+
+        `</div>`+
+        `<div class="banner-uturn" style="color:#98e59a">🟢 All vehicles flowing freely — VANET on standby</div>`;
+      banner.style.display="block";
+    }}
+  }}
+
+  // Event log (built once)
+  if (!window._liveLogBuilt) {{
+    window._liveLogBuilt = true;
+    const el = document.getElementById("event-log");
+    el.innerHTML = "";
+    if (FETCHED_AT) addEvent(`🕐 Fetched: ${{FETCHED_AT.substring(0,19)}} IST`, "#00b4d8");
+    const srcLabel = LIVE_SOURCE==="google_maps" ? "Real Google Maps API" : "Mock (simulated)";
+    addEvent(`📡 Source: ${{srcLabel}}`, "#8b949e");
+    SEGMENT_INFO.forEach(seg => {{
+      const icon=seg.level==="jam"?"🔴":seg.level==="heavy"?"🟠":seg.level==="moderate"?"🟡":"🟢";
+      addEvent(`${{icon}} ${{seg.label}}: ${{seg.level.toUpperCase()}} — ${{seg.speed}} km/h`, seg.colour);
+    }});
+  }}
+}}
+
 // ── Draw one frame ────────────────────────────────────────────────────────────
 function draw() {{
+  if (SIM_MODE === "live") {{ drawLive(); return; }}
   const W = cvs.width, H = cvs.height;
   ctx.clearRect(0, 0, W, H);
 
