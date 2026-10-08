@@ -1,6 +1,6 @@
 {
-  "fetched_at": "2026-10-08T16:53:27+05:30",
-  "source": "mock",
+  "fetched_at": "2026-10-08T17:07:19+05:30",
+  "source": "google_maps",
   "segments": [
     {
       "seg_id": "seg_00_01",
@@ -12,12 +12,12 @@
       "origin_lon": 83.203902,
       "dest_lat": 17.693737,
       "dest_lon": 83.205536,
-      "distance_m": 981.6,
-      "duration_free_s": 70.7,
-      "duration_traffic_s": 74.2,
-      "speed_kmh": 47.6,
-      "congestion_ratio": 1.05,
-      "congestion_level": "free"
+      "distance_m": 1181,
+      "duration_free_s": 167,
+      "duration_traffic_s": 200,
+      "speed_kmh": 21.3,
+      "congestion_ratio": 1.198,
+      "congestion_level": "light"
     },
     {
       "seg_id": "seg_01_02",
@@ -29,11 +29,11 @@
       "origin_lon": 83.205536,
       "dest_lat": 17.702503,
       "dest_lon": 83.205661,
-      "distance_m": 974.8,
-      "duration_free_s": 70.2,
-      "duration_traffic_s": 84.2,
-      "speed_kmh": 41.7,
-      "congestion_ratio": 1.2,
+      "distance_m": 3104,
+      "duration_free_s": 406,
+      "duration_traffic_s": 472,
+      "speed_kmh": 23.7,
+      "congestion_ratio": 1.163,
       "congestion_level": "light"
     },
     {
@@ -46,12 +46,12 @@
       "origin_lon": 83.205661,
       "dest_lat": 17.710709,
       "dest_lon": 83.205199,
-      "distance_m": 913.8,
-      "duration_free_s": 65.8,
-      "duration_traffic_s": 102.0,
-      "speed_kmh": 32.3,
-      "congestion_ratio": 1.55,
-      "congestion_level": "moderate"
+      "distance_m": 2262,
+      "duration_free_s": 237,
+      "duration_traffic_s": 301,
+      "speed_kmh": 27.1,
+      "congestion_ratio": 1.27,
+      "congestion_level": "light"
     },
     {
       "seg_id": "seg_03_04",
@@ -63,12 +63,12 @@
       "origin_lon": 83.205199,
       "dest_lat": 17.718771,
       "dest_lon": 83.203601,
-      "distance_m": 912.3,
-      "duration_free_s": 65.7,
-      "duration_traffic_s": 141.2,
-      "speed_kmh": 23.3,
-      "congestion_ratio": 2.15,
-      "congestion_level": "jam"
+      "distance_m": 1940,
+      "duration_free_s": 247,
+      "duration_traffic_s": 302,
+      "speed_kmh": 23.1,
+      "congestion_ratio": 1.223,
+      "congestion_level": "light"
     },
     {
       "seg_id": "seg_04_05",
@@ -80,12 +80,12 @@
       "origin_lon": 83.203601,
       "dest_lat": 17.723778,
       "dest_lon": 83.20572,
-      "distance_m": 600.3,
-      "duration_free_s": 43.2,
-      "duration_traffic_s": 75.6,
-      "speed_kmh": 28.6,
-      "congestion_ratio": 1.75,
-      "congestion_level": "heavy"
+      "distance_m": 4932,
+      "duration_free_s": 469,
+      "duration_traffic_s": 456,
+      "speed_kmh": 38.9,
+      "congestion_ratio": 0.972,
+      "congestion_level": "free"
     },
     {
       "seg_id": "seg_05_06",
@@ -97,12 +97,12 @@
       "origin_lon": 83.20572,
       "dest_lat": 17.73226,
       "dest_lon": 83.223209,
-      "distance_m": 2078.6,
-      "duration_free_s": 149.7,
-      "duration_traffic_s": 194.6,
-      "speed_kmh": 38.5,
-      "congestion_ratio": 1.3,
-      "congestion_level": "moderate"
+      "distance_m": 3275,
+      "duration_free_s": 325,
+      "duration_traffic_s": 376,
+      "speed_kmh": 31.4,
+      "congestion_ratio": 1.157,
+      "congestion_level": "light"
     }
   ]
 }
