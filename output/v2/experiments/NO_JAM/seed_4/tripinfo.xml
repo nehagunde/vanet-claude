@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-10-02T15:58:24.558906+05:30 by Eclipse SUMO sumo 1.25.0
+<!-- generated on 2026-10-08T16:39:58.194159+05:30 by Eclipse SUMO sumo 1.25.0
 <sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
 
     <input>
@@ -56,4 +56,3 @@
     <tripinfo id="veh_06" depart="80.00" departLane="544537081#1_0" departPos="86.36" departSpeed="13.89" departDelay="0.00" arrival="510.00" arrivalLane="218746134#2_0" arrivalPos="127.82" arrivalSpeed="13.67" duration="430.00" routeLength="5610.60" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="23.79" rerouteNo="1" devices="tripinfo_veh_06 routing_veh_06" vType="obu" speedFactor="0.87" vaporized=""/>
     <tripinfo id="veh_01" depart="14.00" departLane="544537081#17_0" departPos="215.17" departSpeed="13.89" departDelay="0.70" arrival="544.00" arrivalLane="218746134#2_0" arrivalPos="127.82" arrivalSpeed="13.88" duration="530.00" routeLength="6956.34" waitingTime="0.00" waitingCount="0" stopTime="0.00" timeLoss="27.27" rerouteNo="1" devices="tripinfo_veh_01 routing_veh_01" vType="obu" speedFactor="1.15" vaporized=""/>
     <tripinfo id="veh_00" depart="0.00" departLane="218756744#0_0" departPos="21.94" departSpeed="6.85" departDelay="0.00" arrival="564.00" arrivalLane="218746134#2_0" arrivalPos="127.82" arrivalSpeed="13.08" duration="564.00" routeLength="6598.85" waitingTime="58.00" waitingCount="1" stopTime="0.00" timeLoss="87.78" rerouteNo="1" devices="tripinfo_veh_00 routing_veh_00" vType="obu" speedFactor="1.02" vaporized=""/>
-</tripinfos>
