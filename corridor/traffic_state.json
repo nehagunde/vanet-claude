@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-10-08T17:07:19+05:30",
+  "fetched_at": "2026-10-08T17:25:15+05:30",
   "source": "google_maps",
   "segments": [
     {
@@ -14,9 +14,9 @@
       "dest_lon": 83.205536,
       "distance_m": 1181,
       "duration_free_s": 167,
-      "duration_traffic_s": 200,
-      "speed_kmh": 21.3,
-      "congestion_ratio": 1.198,
+      "duration_traffic_s": 207,
+      "speed_kmh": 20.5,
+      "congestion_ratio": 1.24,
       "congestion_level": "light"
     },
     {
@@ -31,9 +31,9 @@
       "dest_lon": 83.205661,
       "distance_m": 3104,
       "duration_free_s": 406,
-      "duration_traffic_s": 472,
-      "speed_kmh": 23.7,
-      "congestion_ratio": 1.163,
+      "duration_traffic_s": 461,
+      "speed_kmh": 24.2,
+      "congestion_ratio": 1.135,
       "congestion_level": "light"
     },
     {
@@ -48,9 +48,9 @@
       "dest_lon": 83.205199,
       "distance_m": 2262,
       "duration_free_s": 237,
-      "duration_traffic_s": 301,
-      "speed_kmh": 27.1,
-      "congestion_ratio": 1.27,
+      "duration_traffic_s": 299,
+      "speed_kmh": 27.2,
+      "congestion_ratio": 1.262,
       "congestion_level": "light"
     },
     {
@@ -65,10 +65,10 @@
       "dest_lon": 83.203601,
       "distance_m": 1940,
       "duration_free_s": 247,
-      "duration_traffic_s": 302,
-      "speed_kmh": 23.1,
-      "congestion_ratio": 1.223,
-      "congestion_level": "light"
+      "duration_traffic_s": 327,
+      "speed_kmh": 21.4,
+      "congestion_ratio": 1.324,
+      "congestion_level": "moderate"
     },
     {
       "seg_id": "seg_04_05",
@@ -81,10 +81,10 @@
       "dest_lat": 17.723778,
       "dest_lon": 83.20572,
       "distance_m": 4932,
-      "duration_free_s": 469,
-      "duration_traffic_s": 456,
-      "speed_kmh": 38.9,
-      "congestion_ratio": 0.972,
+      "duration_free_s": 438,
+      "duration_traffic_s": 466,
+      "speed_kmh": 38.1,
+      "congestion_ratio": 1.064,
       "congestion_level": "free"
     },
     {
@@ -99,9 +99,9 @@
       "dest_lon": 83.223209,
       "distance_m": 3275,
       "duration_free_s": 325,
-      "duration_traffic_s": 376,
-      "speed_kmh": 31.4,
-      "congestion_ratio": 1.157,
+      "duration_traffic_s": 405,
+      "speed_kmh": 29.1,
+      "congestion_ratio": 1.246,
       "congestion_level": "light"
     }
   ]

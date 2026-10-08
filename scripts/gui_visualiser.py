@@ -595,7 +595,18 @@ function bannerDue(t) {{
   return bt !== null && t >= bt;
 }}
 
-// ── Live-mode draw — real Google Maps traffic ONLY, no simulation data ────────
+// ── Live-mode helper: map vehicle SUMO y-position to a segment ───────────────
+function segmentForVehicle(sy) {{
+  for (let i = 0; i < RSU_INFO.length-1; i++) {{
+    const ya = RSU_INFO[i].y, yb = RSU_INFO[i+1].y;
+    if (sy >= Math.min(ya,yb) && sy <= Math.max(ya,yb)) {{
+      return SEGMENT_INFO.find(s => s.fi===i && s.ti===i+1) || null;
+    }}
+  }}
+  return null;
+}}
+
+// ── Live-mode draw — Google Maps road colours + animated SUMO vehicles ────────
 function drawLive() {{
   const W = cvs.width, H = cvs.height;
   ctx.clearRect(0, 0, W, H);
@@ -604,10 +615,12 @@ function drawLive() {{
   bg.addColorStop(0, "#0d1117"); bg.addColorStop(1, "#161b22");
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
+  const t        = Math.floor(simT);
+  const step     = FRAMES[t] || {{}};
   const rsus     = getRsuCanvas();
   const road_pts = RSU_INFO.map(r => toCanvas(r.x, r.y));
 
-  // Road base
+  // Road base (same as mock — dark tarmac)
   for (let i = 0; i < road_pts.length-1; i++) {{
     const [x1,y1] = road_pts[i], [x2,y2] = road_pts[i+1];
     ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
@@ -616,13 +629,13 @@ function drawLive() {{
     ctx.strokeStyle = "#444c56"; ctx.lineWidth = 16; ctx.stroke();
   }}
 
-  // Segment colours from Google Maps
+  // Thin 5 px accent line per segment (Google Maps colour) — road base stays visible
   if (SEGMENT_INFO.length > 0) {{
     SEGMENT_INFO.forEach(seg => {{
       const [x1,y1] = road_pts[seg.fi]||[0,0], [x2,y2] = road_pts[seg.ti]||[0,0];
       ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
-      ctx.strokeStyle = seg.colour+"dd"; ctx.lineWidth = 12; ctx.lineCap = "round"; ctx.stroke();
-      // Speed label
+      ctx.strokeStyle = seg.colour+"99"; ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.stroke();
+      // Speed label mid-segment
       const mx=(x1+x2)/2, my=(y1+y2)/2-18;
       ctx.fillStyle="rgba(0,0,0,0.72)"; ctx.beginPath();
       ctx.roundRect(mx-32,my-11,64,16,3); ctx.fill();
@@ -634,14 +647,46 @@ function drawLive() {{
       ctx.fillStyle=seg.colour; ctx.font="bold 8px 'Segoe UI'";
       ctx.fillText(seg.level.toUpperCase(), mx, my+18);
     }});
-    ctx.setLineDash([20,14]);
-    for (let i=0;i<road_pts.length-1;i++) {{
-      const [x1,y1]=road_pts[i],[x2,y2]=road_pts[i+1];
-      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
-      ctx.strokeStyle="#ffffff22"; ctx.lineWidth=2; ctx.stroke();
-    }}
-    ctx.setLineDash([]);
   }}
+
+  // Dashed centre line
+  ctx.setLineDash([20,14]);
+  for (let i=0;i<road_pts.length-1;i++) {{
+    const [x1,y1]=road_pts[i],[x2,y2]=road_pts[i+1];
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+    ctx.strokeStyle="#ffffff22"; ctx.lineWidth=2; ctx.stroke();
+  }}
+  ctx.setLineDash([]);
+
+  // RSU radio range circles
+  const rangePx = metresToPx(RADIO_M);
+  rsus.forEach(r => {{
+    ctx.beginPath(); ctx.arc(r.cx, r.cy, rangePx, 0, Math.PI*2);
+    ctx.strokeStyle = "#00b4d822"; ctx.lineWidth = 1; ctx.setLineDash([6,5]); ctx.stroke(); ctx.setLineDash([]);
+  }});
+
+  // Collect vehicle positions from SUMO FRAMES
+  const vehPos = {{}};
+  Object.entries(step).forEach(([vid,[sx,sy,spd]]) => {{
+    const [cx,cy] = toCanvas(sx,sy);
+    vehPos[vid] = {{ cx, cy, sx, sy, spd }};
+  }});
+  const vehIds = Object.keys(vehPos);
+
+  // V2I beacon links (distance-based, same as mock)
+  let linkCount = 0;
+  rsus.forEach(r => {{
+    vehIds.forEach(vid => {{
+      const v = vehPos[vid];
+      const d = Math.hypot(v.sx - r.x, v.sy - r.y);
+      if (d < RADIO_M) {{
+        const alpha = 0.15 + 0.35 * (1 - d/RADIO_M);
+        ctx.beginPath(); ctx.moveTo(r.cx,r.cy); ctx.lineTo(v.cx,v.cy);
+        ctx.strokeStyle = `rgba(0,180,216,${{alpha}})`; ctx.lineWidth = 1.2; ctx.stroke();
+        linkCount++;
+      }}
+    }});
+  }});
 
   // RSU nodes
   rsus.forEach(r => {{
@@ -658,6 +703,31 @@ function drawLive() {{
     ctx.fillText(r.area, r.cx, r.cy+s+25);
   }});
 
+  // Vehicles: color = Google Maps segment, speed label = segment speed
+  let slowCount = 0;
+  vehIds.forEach(vid => {{
+    const v   = vehPos[vid];
+    const seg = segmentForVehicle(v.sy);
+    const col = seg ? seg.colour : (v.spd < 5 ? "#ff4444" : v.spd < 30 ? "#ffbe0b" : "#3fb950");
+    const displaySpd = seg ? seg.speed : v.spd;
+    if (displaySpd < 5) slowCount++;
+
+    // Glow
+    const grad = ctx.createRadialGradient(v.cx, v.cy, 0, v.cx, v.cy, 16);
+    grad.addColorStop(0, col+"66"); grad.addColorStop(1, col+"00");
+    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(v.cx, v.cy, 16, 0, Math.PI*2); ctx.fill();
+
+    // Vehicle circle
+    ctx.beginPath(); ctx.arc(v.cx, v.cy, 7, 0, Math.PI*2);
+    ctx.fillStyle = col; ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5;
+    ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = "#e6edf3"; ctx.font = "bold 9px 'Segoe UI'"; ctx.textAlign = "center";
+    ctx.fillText(vid.replace("veh_","V"), v.cx, v.cy-11);
+    ctx.fillStyle = col; ctx.font = "9px monospace";
+    ctx.fillText(displaySpd.toFixed(0)+"k", v.cx, v.cy+19);
+  }});
+
   // Direction labels
   ctx.fillStyle="#484f58"; ctx.font="bold 11px 'Segoe UI'";
   ctx.textAlign="left";  ctx.fillText("◀ Gajuwaka (South)", 8, H/2+5);
@@ -669,17 +739,17 @@ function drawLive() {{
   timeEl.textContent = FETCHED_AT ? FETCHED_AT.substring(11,16)+" IST" : "Live";
   if (FETCHED_AT) timeEl.title = "Fetched at "+FETCHED_AT;
 
-  // Sidebar stats from real segment data
+  // Sidebar stats
   const jamSegs    = SEGMENT_INFO.filter(s=>s.level==="jam");
   const heavySegs  = SEGMENT_INFO.filter(s=>s.level==="heavy");
   const congested  = jamSegs.length + heavySegs.length;
   const avgSpd     = SEGMENT_INFO.length > 0
     ? (SEGMENT_INFO.reduce((a,s)=>a+s.speed,0)/SEGMENT_INFO.length).toFixed(1) : "--";
-  document.getElementById("sv-active").textContent   = SEGMENT_INFO.length;
-  document.getElementById("sv-links").textContent    = RSU_INFO.length;
+  document.getElementById("sv-active").textContent   = vehIds.length;
+  document.getElementById("sv-links").textContent    = linkCount;
   document.getElementById("sv-slow").textContent     = congested;
   document.getElementById("sv-rerouted").textContent = jamSegs.length;
-  document.getElementById("progress-bar").style.width = "100%";
+  document.getElementById("progress-bar").style.width = (t/SIM_MAX*100)+"%";
 
   // Segment speed list in sidebar
   const listEl = document.getElementById("veh-list");
@@ -699,7 +769,7 @@ function drawLive() {{
     listEl.innerHTML='<div style="color:#484f58;font-size:0.78rem;padding:8px">Run fetch_traffic.py first</div>';
   }}
 
-  // Alert banner: real-traffic summary (built once)
+  // Alert banner (built once)
   const banner = document.getElementById("alert-banner");
   document.getElementById("reroute-flash").style.display="none";
   if (!window._liveBannerBuilt) {{
