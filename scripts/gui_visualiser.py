@@ -1267,23 +1267,27 @@ function draw() {{
     const senderNames = (q.vehicles || []).length > 0
       ? (q.vehicles || []).map(n => "V" + String(n).padStart(2, "0")).join(", ")
       : "V02, V03, V04";
-    // Receiver names from ja_recv log
-    const allRecv = Object.values(NS3_EVENTS.ja_recv).flat();
-    const recvText = allRecv.length > 0
-      ? allRecv.map(n => "V"+String(n).padStart(2,"0")).join(", ")
-      : "Awaiting 802.11p reception";
+    // Receiver names: only OBUs that have ALREADY received JAM_ALERT by time t
+    const recvSoFar = [];
+    for (const [tStr, nodes] of Object.entries(NS3_EVENTS.ja_recv)) {{
+      if (parseInt(tStr, 10) <= t) recvSoFar.push(...nodes);
+    }}
+    const uniqueRecv = [...new Set(recvSoFar)].sort((a,b)=>a-b);
+    const recvText = uniqueRecv.length > 0
+      ? uniqueRecv.map(n => "V"+String(n).padStart(2,"0")).join(", ")
+      : "Awaiting 802.11p reception →";
     const relayRsu   = alertRsuNode ? alertRsuNode.id : "rsu_01";
     const jamRsuLabel = jamRsuNode  ? jamRsuNode.id   : "rsu_02";
     banner.innerHTML =
-      `<div class="banner-title">⚠️ QUORUM_REACHED — Jam confirmed at ${{jamRsuLabel}} (T=${{bt}}s)</div>` +
+      `<div class="banner-title">⚠️ JAM DETECTED at ${{jamRsuLabel}} (BHPV) — QUORUM_REACHED T=${{bt}}s</div>` +
       `<div class="banner-grid">` +
         `<div class="banner-box sender">` +
-          `<div class="banner-box-title">📡 Senders (JAM_DETECTED)</div>` +
+          `<div class="banner-box-title">📡 Senders — JAM_DETECTED (${{jamRsuLabel}})</div>` +
           `<div class="banner-vehs">${{senderNames || "—"}}</div>` +
-          `<div style="font-size:0.75rem;color:#cc88ff;margin-top:4px">→ Relayed via ${{relayRsu}}</div>` +
+          `<div style="font-size:0.75rem;color:#cc88ff;margin-top:4px">📶 ${{jamRsuLabel}} → ${{relayRsu}} (backhaul relay)</div>` +
         `</div>` +
         `<div class="banner-box receiver">` +
-          `<div class="banner-box-title">📻 Receivers (JAM_ALERT_RECV)</div>` +
+          `<div class="banner-box-title">📻 Receivers — JAM_ALERT_RECV (${{relayRsu}})</div>` +
           `<div class="banner-vehs" style="font-size:0.8rem">${{recvText}}</div>` +
         `</div>` +
       `</div>` +
