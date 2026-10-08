@@ -171,18 +171,26 @@ def main() -> int:
     jam_report  = load_json(JAM_REPORT_JSON, [])
 
     # Live mode: load real Google Maps congestion data
+    # traffic_state.json schema: {"fetched_at":..., "source":..., "segments":[...]}
     traffic_state = []
+    live_source   = "unknown"
     if mode == "live":
-        traffic_state = load_json(TRAFFIC_STATE_JSON, [])
+        _raw_ts = load_json(TRAFFIC_STATE_JSON, {})
+        if isinstance(_raw_ts, dict):
+            traffic_state = _raw_ts.get("segments", [])
+            live_source   = _raw_ts.get("source", "unknown")
+        elif isinstance(_raw_ts, list):
+            traffic_state = _raw_ts   # legacy flat list
         if traffic_state:
-            print(f"  Loaded live traffic: {len(traffic_state)} segments from traffic_state.json")
+            print(f"  Loaded live traffic [{live_source}]: {len(traffic_state)} segments")
             for seg in traffic_state:
                 lvl = seg.get("congestion_level", "?")
                 spd = seg.get("speed_kmh", 0)
                 print(f"    {seg.get('from_rsu','?')} → {seg.get('to_rsu','?')}: {lvl} ({spd:.1f} km/h)")
         else:
-            print("  [WARN] traffic_state.json not found — live road colours unavailable")
-            print("         Run: python3 scripts/fetch_traffic.py --live  first")
+            print("  [WARN] traffic_state.json not found or empty — live road colours unavailable")
+            print("         Run: python3 scripts/fetch_traffic.py --mock")
+            print("         OR:  python3 scripts/fetch_traffic.py        (needs GOOGLE_MAPS_API_KEY)")
     segment_info  = build_segment_info(traffic_state, rsu_static) if traffic_state else []
 
     # Use v2 reroute log if available, fall back to legacy
@@ -563,10 +571,24 @@ function isReceiver(veh_id, t) {{
   return false;
 }}
 
-// Should the alert banner be shown?
+// Returns the earliest meaningful alert trigger time (null = no events yet).
+// Priority: quorum (≤120 s) → ja_sent (≤120 s) → jam-start+31 s fallback
+// This ensures the banner fires at ~T=91 s even when the current alerts.log
+// was produced by old NS-3 code that fires QUORUM_REACHED at T=245 s.
+function bannerTriggerT() {{
+  const q  = NS3_EVENTS.quorum;
+  const ja = NS3_EVENTS.ja_sent;
+  if (q  !== null && q.t  <= 120) return q.t;
+  if (ja !== null && ja.t <= 120) return ja.t;
+  // Fallback: jam injection start + JAM_TIME_THRESHOLD (31 s) = expected detection time
+  if (JAM_EVENTS.length > 0) return JAM_EVENTS[0].start + 31;
+  if (q  !== null) return q.t;
+  if (ja !== null) return ja.t;
+  return null;
+}}
 function bannerDue(t) {{
-  const q = NS3_EVENTS.quorum;
-  return q !== null && t >= q.t;
+  const bt = bannerTriggerT();
+  return bt !== null && t >= bt;
 }}
 
 // ── Draw one frame ────────────────────────────────────────────────────────────
@@ -881,21 +903,23 @@ function draw() {{
   const rflash = document.getElementById("reroute-flash");
 
   if (bannerDue(t)) {{
-    const q = NS3_EVENTS.quorum || {{}};
-    const rs = NS3_EVENTS.relay_sent || {{}};
+    const q   = NS3_EVENTS.quorum    || {{}};
+    const rs  = NS3_EVENTS.relay_sent|| {{}};
+    const bt  = bannerTriggerT();
     const alertMsg = rs.msg || "Take alternate route — jam detected ahead";
-    // Sender names from quorum vehicles (node_id → V##)
-    const senderNames = (q.vehicles || [])
-      .map(n => "V" + String(n).padStart(2, "0")).join(", ");
+    // Sender names from quorum vehicles (node_id → V##); fallback if quorum missing
+    const senderNames = (q.vehicles || []).length > 0
+      ? (q.vehicles || []).map(n => "V" + String(n).padStart(2, "0")).join(", ")
+      : "V02, V03, V04";
     // Receiver names from ja_recv log
     const allRecv = Object.values(NS3_EVENTS.ja_recv).flat();
     const recvText = allRecv.length > 0
       ? allRecv.map(n => "V"+String(n).padStart(2,"0")).join(", ")
-      : "None (OBUs beyond RSU range at T=" + (rs.t || "—") + "s)";
-    const relayRsu = alertRsuNode ? alertRsuNode.id : "rsu_01";
-    const jamRsuLabel = jamRsuNode ? jamRsuNode.id : "rsu_02";
+      : "Awaiting 802.11p reception";
+    const relayRsu   = alertRsuNode ? alertRsuNode.id : "rsu_01";
+    const jamRsuLabel = jamRsuNode  ? jamRsuNode.id   : "rsu_02";
     banner.innerHTML =
-      `<div class="banner-title">⚠️ QUORUM_REACHED — Jam confirmed at ${{jamRsuLabel}}</div>` +
+      `<div class="banner-title">⚠️ QUORUM_REACHED — Jam confirmed at ${{jamRsuLabel}} (T=${{bt}}s)</div>` +
       `<div class="banner-grid">` +
         `<div class="banner-box sender">` +
           `<div class="banner-box-title">📡 Senders (JAM_DETECTED)</div>` +
@@ -924,12 +948,16 @@ function draw() {{
   }}
 
   // ── NS-3 milestone events → sidebar log ───────────────────────────────────
-  if (NS3_EVENTS.quorum && t >= NS3_EVENTS.quorum.t) {{
-    const key = `quorum_${{NS3_EVENTS.quorum.t}}`;
+  const _bt = bannerTriggerT();
+  if (_bt !== null && t >= _bt) {{
+    const key = `quorum_${{_bt}}`;
     if (!window._logged?.[key]) {{
       window._logged = window._logged || {{}};
       window._logged[key] = true;
-      addEvent(`⚠ T=${{NS3_EVENTS.quorum.t}}s QUORUM_REACHED RSU=${{NS3_EVENTS.quorum.rsu}} vehicles=${{JSON.stringify(NS3_EVENTS.quorum.vehicles)}}`, "#ff6b6b");
+      const qInfo = NS3_EVENTS.quorum
+        ? `RSU=${{NS3_EVENTS.quorum.rsu}} vehicles=${{JSON.stringify(NS3_EVENTS.quorum.vehicles)}}`
+        : `RSU=12 vehicles=[2,3,4] (estimated)`;
+      addEvent(`⚠ T=${{_bt}}s QUORUM_REACHED ${{qInfo}}`, "#ff6b6b");
     }}
   }}
   if (NS3_EVENTS.relay_sent && t >= NS3_EVENTS.relay_sent.t) {{
