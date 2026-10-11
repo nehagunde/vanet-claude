@@ -1,10 +1,11 @@
 <viewsettings>
     <scheme name="real world">
-        <!-- Range-circle polygons: show outline only, no label -->
-        <polyName show="0"/>
-        <polySize minSize="0" exaggeration="1"/>
-        <!-- RSU POI dots: solid red, always visible at any zoom -->
-        <poiName  show="1" size="50" color="255,0,0"/>
-        <poiSize  minSize="20" exaggeration="1"/>
+        <background backgroundColor="87,87,87,255" showGrid="0" showTilemap="1"/>
+        <!-- POI names: small, only visible when zoomed in (minSize threshold) -->
+        <pois poiName_show="1" poiName_size="40" poiName_color="255,255,255,255"
+              poiName_minSize="12" poiColor_show="1" poiSize_exaggeration="2.00"
+              poiType_show="0"/>
+        <!-- Suppress polygon label clutter (range circles have no name anyway) -->
+        <polys polyName_show="0" polyColor_show="1" polySize_exaggeration="1.00"/>
     </scheme>
 </viewsettings>

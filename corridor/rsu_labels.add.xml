@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<additional>
+    <!-- RSU marker dots — id = area name (shown as label by poiName_show) -->
+    <poi id="Old_Gajuwaka"  lon="83.203902" lat="17.685048" geo="true" color="255,50,50,255"  type="RSU" layer="202"/>
+    <poi id="New_Gajuwaka"  lon="83.205536" lat="17.693737" geo="true" color="255,50,50,255"  type="RSU" layer="202"/>
+    <poi id="BHPV"          lon="83.205661" lat="17.702503" geo="true" color="255,50,50,255"  type="RSU" layer="202"/>
+    <poi id="Nathayyapalem" lon="83.205199" lat="17.710709" geo="true" color="255,50,50,255"  type="RSU" layer="202"/>
+    <poi id="Sheelanagar"   lon="83.203601" lat="17.718771" geo="true" color="255,50,50,255"  type="RSU" layer="202"/>
+    <poi id="Gopalapatnam"  lon="83.205720" lat="17.723778" geo="true" color="255,50,50,255"  type="RSU" layer="202"/>
+    <poi id="NAD_Junction"  lon="83.223209" lat="17.732260" geo="true" color="255,50,50,255"  type="RSU" layer="202"/>
+</additional>
